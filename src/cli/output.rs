@@ -97,7 +97,7 @@ fn priority_cell(priority: Priority) -> Cell {
     match priority {
         Priority::High => cell.fg(Color::Red),
         Priority::Medium => cell.fg(Color::Yellow),
-        Priority::Low => cell,
+        Priority::Low => cell.fg(Color::Cyan),
     }
 }
 
@@ -105,8 +105,8 @@ fn priority_cell(priority: Priority) -> Cell {
 fn status_cell(status: Status) -> Cell {
     let cell = Cell::new(status);
     match status {
-        Status::ToDo => cell,
-        Status::InProgress => cell.fg(Color::Blue),
+        Status::ToDo => cell.fg(Color::Cyan),
+        Status::InProgress => cell.fg(Color::Magenta),
         Status::Done => cell.fg(Color::Green),
     }
 }

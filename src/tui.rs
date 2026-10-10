@@ -105,8 +105,13 @@ mod tests {
         // n cancels, y applies.
         press(&mut app, KeyCode::Char('n'));
         assert_eq!(task(&app, 1).status, Status::ToDo);
-        press(&mut app, KeyCode::Char('p'));
+        press(&mut app, KeyCode::Char('s'));
         press(&mut app, KeyCode::Char('y'));
+        assert_eq!(task(&app, 1).status, Status::InProgress);
+
+        // Priority is the exception: it changes without asking.
+        press(&mut app, KeyCode::Char('p'));
+        assert!(matches!(app.mode, Mode::Normal));
         assert_eq!(task(&app, 1).priority, Priority::Medium);
 
         // A bad due date keeps the prompt open; a good one asks first.
@@ -150,6 +155,86 @@ mod tests {
         press(&mut app, KeyCode::Char(' '));
         press(&mut app, KeyCode::Char('y'));
         assert!(app.done_tasks().is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_tasks_are_sorted_and_selection_follows_edits() {
+        let dir = std::env::temp_dir().join(format!("kru-tui-{}", uuid::Uuid::new_v4()));
+        let mut app = App::new(Store::open(&dir).unwrap());
+        app.update(Action::Add);
+        type_text(&mut app, "home");
+        app.update(Action::FocusTasks);
+        for description in ["Water plants", "Pay rent"] {
+            app.update(Action::Add);
+            type_text(&mut app, description);
+        }
+        let order = |app: &App| -> Vec<String> {
+            let tasks = app.open_tasks();
+            tasks.iter().map(|e| e.task.description.clone()).collect()
+        };
+        assert_eq!(order(&app), ["Water plants", "Pay rent"]);
+
+        // Raising the second task's priority moves it to the top, and the
+        // selection moves with it.
+        assert_eq!(app.task_index, 1);
+        press(&mut app, KeyCode::Char('p'));
+        assert_eq!(order(&app), ["Pay rent", "Water plants"]);
+        assert_eq!(app.selected_task().unwrap().task.description, "Pay rent");
+
+        // A due date beats priority.
+        press(&mut app, KeyCode::Char('j'));
+        app.update(Action::EditDue);
+        type_text(&mut app, "tomorrow");
+        press(&mut app, KeyCode::Char('y'));
+        assert_eq!(order(&app), ["Water plants", "Pay rent"]);
+        assert_eq!(
+            app.selected_task().unwrap().task.description,
+            "Water plants"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn expanded_view_and_remove_key() {
+        let dir = std::env::temp_dir().join(format!("kru-tui-{}", uuid::Uuid::new_v4()));
+        let mut app = App::new(Store::open(&dir).unwrap());
+        app.update(Action::Add);
+        type_text(&mut app, "home");
+        app.update(Action::FocusTasks);
+        for description in ["Call the plumber about the kitchen tap", "Fix bike"] {
+            app.update(Action::Add);
+            type_text(&mut app, description);
+        }
+        app.update(Action::Up);
+
+        // x opens the blown-up view of the selected task.
+        press(&mut app, KeyCode::Char('x'));
+        assert_eq!(app.expanded_task().unwrap().num, 1);
+        let screen_text = screen(&app);
+        assert!(screen_text.contains("Task #1 · home"), "{screen_text}");
+        assert!(screen_text.contains("Created"), "{screen_text}");
+
+        // Task keys act on the expanded task; j/k move the view along.
+        press(&mut app, KeyCode::Char('s'));
+        press(&mut app, KeyCode::Char('y'));
+        assert_eq!(task(&app, 1).status, Status::InProgress);
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.expanded_task().unwrap().num, 2);
+
+        // Esc closes the view first, and only quits when nothing is open.
+        press(&mut app, KeyCode::Esc);
+        assert!(app.expanded.is_none() && !app.should_quit);
+
+        // r removes (after confirming); x no longer does.
+        press(&mut app, KeyCode::Char('r'));
+        press(&mut app, KeyCode::Char('y'));
+        assert_eq!(app.store.entries().count(), 1);
+
+        press(&mut app, KeyCode::Esc);
+        assert!(app.should_quit);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

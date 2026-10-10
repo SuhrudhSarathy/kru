@@ -196,8 +196,9 @@ pub fn run(command: TaskCommand, store: &mut Store) -> Result<()> {
     Ok(())
 }
 
-/// Prints the tasks matching the filters; done tasks are hidden
-/// unless `--all` or `--status` is given.
+/// Prints the tasks matching the filters, most urgent first (open tasks
+/// before done ones). Done tasks are hidden unless `--all` or `--status`
+/// is given.
 fn list(store: &Store, args: ListArgs) -> Result<()> {
     let bucket = match &args.bucket {
         Some(name) => Some(store.bucket(name)?.header.id),
@@ -207,7 +208,7 @@ fn list(store: &Store, args: ListArgs) -> Result<()> {
     let show_done = args.all || args.status.is_some();
 
     let mut hidden_done = 0;
-    let entries: Vec<_> = store
+    let mut entries: Vec<_> = store
         .entries()
         .filter(|e| bucket.is_none_or(|id| e.bucket.header.id == id))
         .filter(|e| args.status.is_none_or(|s| e.task.status == s))
@@ -223,6 +224,12 @@ fn list(store: &Store, args: ListArgs) -> Result<()> {
             !hide
         })
         .collect();
+    entries.sort_by(|a, b| {
+        a.task
+            .is_done()
+            .cmp(&b.task.is_done())
+            .then_with(|| a.task.cmp_urgency(b.task))
+    });
 
     if store.buckets().next().is_none() {
         println!("No buckets yet. Create one with `kru bucket add <name>`.");

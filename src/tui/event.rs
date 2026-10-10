@@ -16,7 +16,8 @@ pub fn action_for(key: KeyEvent, mode: &Mode) -> Option<Action> {
     let action = match mode {
         Mode::Normal => match key.code {
             KeyCode::Enter => return None,
-            KeyCode::Char('q') | KeyCode::Esc => Action::Quit,
+            KeyCode::Char('q') => Action::Quit,
+            KeyCode::Esc => Action::Back,
             KeyCode::Char('k') | KeyCode::Up => Action::Up,
             KeyCode::Char('j') | KeyCode::Down => Action::Down,
             KeyCode::Char('h') | KeyCode::Left => Action::FocusBuckets,
@@ -25,7 +26,8 @@ pub fn action_for(key: KeyEvent, mode: &Mode) -> Option<Action> {
             KeyCode::BackTab => Action::FocusPrev,
             KeyCode::Char('a') => Action::Add,
             KeyCode::Char('e') => Action::Edit,
-            KeyCode::Char('x') | KeyCode::Delete => Action::Remove,
+            KeyCode::Char('r') | KeyCode::Delete => Action::Remove,
+            KeyCode::Char('x') => Action::Expand,
             KeyCode::Char('u') => Action::UseBucket,
             KeyCode::Char(' ') => Action::ToggleDone,
             KeyCode::Char('s') => Action::CycleStatus,

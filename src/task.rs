@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
 
@@ -16,6 +17,15 @@ pub enum Priority {
 
 impl Priority {
     pub const ALL: [Priority; 3] = [Priority::Low, Priority::Medium, Priority::High];
+
+    /// How important the priority is: higher is more important.
+    pub fn rank(self) -> u8 {
+        match self {
+            Priority::Low => 0,
+            Priority::Medium => 1,
+            Priority::High => 2,
+        }
+    }
 }
 
 impl fmt::Display for Priority {
@@ -157,6 +167,16 @@ impl Task {
     pub fn is_overdue(&self, now: Timestamp) -> bool {
         !self.is_done() && self.due.is_some_and(|due| due < now)
     }
+
+    /// Orders tasks most urgent first: earliest due date first (tasks
+    /// without one last), then higher priority first. Use with a stable
+    /// sort so ties keep their creation order.
+    pub fn cmp_urgency(&self, other: &Task) -> Ordering {
+        let due = |task: &Task| (task.due.is_none(), task.due);
+        due(self)
+            .cmp(&due(other))
+            .then_with(|| other.priority.rank().cmp(&self.priority.rank()))
+    }
 }
 
 /// A partial update to a task: `None` fields are left unchanged.
@@ -176,5 +196,40 @@ impl TaskEdit {
             && self.priority.is_none()
             && self.status.is_none()
             && self.due.is_none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jiff::SignedDuration;
+
+    #[test]
+    fn urgency_orders_by_due_then_priority() {
+        let now = Timestamp::now();
+        let in_days = |days: i64| now + SignedDuration::from_hours(days * 24);
+        let mut tasks = [
+            Task::new("no due, high").with_priority(Priority::High),
+            Task::new("later, high")
+                .with_priority(Priority::High)
+                .with_due(in_days(5)),
+            Task::new("soon, low").with_due(in_days(1)),
+            Task::new("no due, low"),
+            Task::new("soon, high")
+                .with_priority(Priority::High)
+                .with_due(in_days(1)),
+        ];
+        tasks.sort_by(Task::cmp_urgency);
+        let order: Vec<_> = tasks.iter().map(|t| t.description.as_str()).collect();
+        assert_eq!(
+            order,
+            [
+                "soon, high",
+                "soon, low",
+                "later, high",
+                "no due, high",
+                "no due, low"
+            ]
+        );
     }
 }

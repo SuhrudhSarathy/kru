@@ -3,6 +3,7 @@
 
 mod bucket;
 mod fields;
+mod json;
 mod output;
 mod task;
 
@@ -17,6 +18,10 @@ pub use fields::FieldInput;
 #[command(name = "kru", version, about = "Tasks, organised in buckets")]
 #[command(after_help = "Run `kru` without a command to open the TUI.")]
 pub struct Cli {
+    /// Print JSON instead of text (for scripts)
+    #[arg(long, global = true)]
+    pub json: bool,
+
     #[command(subcommand)]
     pub command: Option<Command>,
 }
@@ -60,19 +65,32 @@ pub fn parse() -> (Cli, Vec<FieldInput>) {
 }
 
 /// Runs a parsed command against the store. `fields` are the task field
-/// flags from [`parse`].
-pub fn run(command: Command, store: &mut Store, fields: &[FieldInput]) -> Result<()> {
+/// flags from [`parse`]; `as_json` prints JSON instead of text.
+pub fn run(
+    command: Command,
+    store: &mut Store,
+    fields: &[FieldInput],
+    as_json: bool,
+) -> Result<()> {
     match command {
-        Command::Task(command) => task::run(command, store, fields),
-        Command::Bucket(command) => bucket::run(command, store),
+        Command::Task(command) => task::run(command, store, fields, as_json),
+        Command::Bucket(command) => bucket::run(command, store, as_json),
         Command::Prune { days } => {
             let pruned = store.prune(SignedDuration::from_hours(i64::from(days) * 24));
             store.save()?;
-            println!("Pruned {pruned} done task(s) older than {days} day(s).");
+            if as_json {
+                json::print(serde_json::json!({ "pruned": pruned }));
+            } else {
+                println!("Pruned {pruned} done task(s) older than {days} day(s).");
+            }
             Ok(())
         }
         Command::Path => {
-            println!("{}", store.dir().display());
+            if as_json {
+                json::print(serde_json::json!({ "path": store.dir() }));
+            } else {
+                println!("{}", store.dir().display());
+            }
             Ok(())
         }
     }

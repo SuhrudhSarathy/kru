@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use clap::Subcommand;
 use kru::{Error, Store};
 
-use super::output;
+use super::{json, output};
 
 #[derive(Subcommand)]
 pub enum BucketCommand {
@@ -30,17 +30,24 @@ pub enum BucketCommand {
     },
 }
 
-/// Runs a `kru bucket …` command.
-pub fn run(command: BucketCommand, store: &mut Store) -> Result<()> {
+/// Runs a `kru bucket …` command; `as_json` prints JSON instead of text.
+pub fn run(command: BucketCommand, store: &mut Store, as_json: bool) -> Result<()> {
     match command {
         BucketCommand::Add { name } => {
-            let bucket = store.add_bucket(&name)?;
-            println!("Added bucket {}.", bucket.name);
+            let name = store.add_bucket(&name)?.name.clone();
             store.save()?;
+            if as_json {
+                json::print(json::bucket(store, store.bucket(&name)?));
+            } else {
+                println!("Added bucket {name}.");
+            }
         }
 
         BucketCommand::List => {
-            if store.buckets().next().is_none() {
+            if as_json {
+                let buckets = store.buckets().map(|b| json::bucket(store, b)).collect();
+                json::print(buckets);
+            } else if store.buckets().next().is_none() {
                 println!("No buckets yet. Create one with `kru bucket add <name>`.");
             } else {
                 output::print_buckets(store);
@@ -50,13 +57,23 @@ pub fn run(command: BucketCommand, store: &mut Store) -> Result<()> {
         BucketCommand::Use { name } => {
             store.set_active_bucket(&name)?;
             store.save()?;
-            println!("Active bucket is now {}.", store.bucket(&name)?.name);
+            let bucket = store.bucket(&name)?;
+            if as_json {
+                json::print(json::bucket(store, bucket));
+            } else {
+                println!("Active bucket is now {}.", bucket.name);
+            }
         }
 
         BucketCommand::Rename { name, new_name } => {
             store.rename_bucket(&name, &new_name)?;
             store.save()?;
-            println!("Renamed {name} to {new_name}.");
+            let bucket = store.bucket(&new_name)?;
+            if as_json {
+                json::print(json::bucket(store, bucket));
+            } else {
+                println!("Renamed {name} to {}.", bucket.name);
+            }
         }
 
         BucketCommand::Remove { name, force } => {
@@ -67,11 +84,15 @@ pub fn run(command: BucketCommand, store: &mut Store) -> Result<()> {
                 result => result?,
             };
             store.save()?;
-            println!(
-                "Removed bucket {} and its {} task(s).",
-                bucket.name,
-                bucket.len()
-            );
+            if as_json {
+                json::print(json::bucket(store, &bucket));
+            } else {
+                println!(
+                    "Removed bucket {} and its {} task(s).",
+                    bucket.name,
+                    bucket.len()
+                );
+            }
         }
     }
     Ok(())

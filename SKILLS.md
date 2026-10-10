@@ -1,0 +1,235 @@
+---
+name: kru
+description: Manage tasks and buckets with the `kru` CLI. Use when asked to add, list, find, update, complete, move or remove tasks, or to manage buckets. Always call kru with --json and parse the result.
+---
+
+# Using kru from an agent
+
+`kru` is a task manager: **tasks** live in **buckets**. This guide is for
+agents (LLMs, scripts) driving it from a shell. Humans can read it too.
+
+## Rules
+
+1. **Always pass `--json`.** Text output is for people and may change; JSON
+   is the interface. `--json` works anywhere on the command line
+   (`kru task list --json` or `kru --json task list`).
+2. **Never run bare `kru`.** With no command it opens an interactive TUI and
+   blocks. `kru --json` with no command is an error, not the TUI.
+3. **Check the exit code.** `0` = success, JSON on stdout. Non-zero = failure,
+   nothing on stdout, a one-line message on stderr starting `Error:` (exit
+   `1`) or `error:` (exit `2`, bad arguments).
+4. **Refer to tasks by `id`, not `num`.** Every command that takes a task
+   accepts either. `num` is only a position: tasks are numbered bucket by
+   bucket, so any `add`, `move` or `remove` can shift other tasks' numbers.
+   `id` never changes. Take it from the JSON (`.id`) and pass it back as is.
+5. **Use `--all` to see done tasks.** `task list` hides them by default.
+
+## Setup
+
+```sh
+cargo install --path .        # from the repo; installs `kru` on PATH
+kru path --json               # {"path": "..."}: where data is stored
+```
+
+Data lives in the user's cache directory. To work on a throwaway copy
+(tests, dry runs), point `KRU_DIR` at another directory:
+
+```sh
+export KRU_DIR="$(mktemp -d)"
+```
+
+## JSON shapes
+
+### Task
+
+Every command that returns a task returns this object. Keys after `bucket`
+are the task's fields, in display order; new fields may appear in future
+versions, so ignore keys you don't know.
+
+```json
+{
+  "num": 1,
+  "bucket": "home",
+  "description": "Pay rent",
+  "priority": "high",
+  "status": "todo",
+  "due": "2026-10-12T11:30:00Z",
+  "completed": null,
+  "created": "2026-10-10T12:49:45.711884Z",
+  "edited": "2026-10-10T12:49:45.711884Z",
+  "id": "01a125dc-bcef-7784-8fc5-17784df85dec"
+}
+```
+
+| Key | Type | Notes |
+|---|---|---|
+| `num` | integer | Position for people; can shift, see rule 4 |
+| `bucket` | string | Bucket name |
+| `description` | string | |
+| `priority` | `"low"` \| `"medium"` \| `"high"` | |
+| `status` | `"todo"` \| `"in-progress"` \| `"done"` | |
+| `due` | RFC 3339 UTC string or `null` | |
+| `completed` | RFC 3339 UTC string or `null` | Set when marked done |
+| `created`, `edited` | RFC 3339 UTC string | |
+| `id` | UUID string | Stable for the task's lifetime; use it to refer to the task |
+
+### Bucket
+
+```json
+{"name": "home", "id": "01a125dc-…", "active": true, "open": 2, "done": 1}
+```
+
+`active` marks the bucket `task add` uses when no `--bucket` is given.
+
+### Change
+
+```json
+{"field": "priority", "from": "low", "to": "high"}
+```
+
+`from`/`to` use the same types as the task's field (times as RFC 3339 or
+`null`).
+
+## Commands
+
+`<task>` is a task's `id` (recommended), a unique start of its id, or its
+`num`. A value made only of digits is always read as a `num`.
+
+| Command | Returns |
+|---|---|
+| `kru task list [filters] --json` | array of tasks (`[]` if none) |
+| `kru task show <task> --json` | task |
+| `kru task add -d <text> [field flags] [-b <bucket>] --json` | the new task |
+| `kru task mark <task> <field flags> --json` | `{"task": task, "changes": [change, …]}` |
+| `kru task done <task>… --json` | array of the updated tasks |
+| `kru task move <task> -b <bucket> --json` | the task, with its new `num` |
+| `kru task remove <task>… --json` | array of the removed tasks, as they were |
+| `kru bucket list --json` | array of buckets |
+| `kru bucket add <name> --json` | bucket |
+| `kru bucket use <name> --json` | bucket (now active) |
+| `kru bucket rename <name> <new-name> --json` | bucket |
+| `kru bucket remove <name> [--force] --json` | the removed bucket |
+| `kru prune [--days N] --json` | `{"pruned": N}` |
+| `kru path --json` | `{"path": "…"}` |
+
+Aliases: `task ls`, `task edit` (= `mark`), `task mv`, `task rm`,
+`bucket ls`, `bucket rm`.
+
+### Field flags (`task add`, `task mark`)
+
+| Flag | Values |
+|---|---|
+| `-d`, `--description` | text (required for `add`) |
+| `-p`, `--priority` | `low`, `medium`, `high` (also `l`, `m`/`med`, `h`) |
+| `-s`, `--status` | `todo`, `in-progress`, `done` (also `doing`, `wip`) |
+| `--due` | `2026-10-12`, `"2026-10-12 17:00"`, `today`, `tomorrow`, `fri`/`friday`, `3d`, `2h`, `1w`, or `none` to clear |
+
+Values are case-insensitive. Dates are read in the user's local time zone;
+a date without a time means the end of that day. `kru task <add|mark> --help`
+always lists the current fields.
+
+### List filters (`task list`)
+
+| Flag | Effect |
+|---|---|
+| `-b`, `--bucket <name>` | only this bucket |
+| `-s`, `--status <status>` | only this status (includes done tasks if `done`) |
+| `-p`, `--priority <priority>` | only this priority |
+| `-q`, `--query <text>` | description contains text (case-insensitive) |
+| `-a`, `--all` | include done tasks |
+
+Results are ordered most urgent first: open before done, then earliest due
+date (no due date last), then higher priority.
+
+## Behaviour to rely on
+
+- **Buckets must exist.** `task add` fails if the bucket doesn't exist, or if
+  no `--bucket` is given and no bucket is active. Bucket names are matched
+  case-insensitively.
+- **Edits are all-or-nothing.** If any flag in a `task mark` is invalid,
+  nothing changes. Setting a value the task already has is a no-op:
+  `changes` is `[]` and the task is not touched.
+- **Input is cleaned.** Text is trimmed, runs of whitespace and newlines
+  become one space, control characters are dropped. Empty text is rejected;
+  text over 500 characters is rejected.
+- **Done tasks are pruned.** Tasks done more than 7 days ago are deleted
+  automatically whenever kru starts.
+- **Removing a bucket with open tasks needs `--force`** and deletes its
+  tasks.
+
+## Recipes
+
+```sh
+# Set up a bucket and add a task to it, keeping its id.
+kru bucket add work --json
+id=$(kru task add -d "Write quarterly report" -p high --due fri -b work --json | jq -r '.id')
+
+# Act on it later by id, whatever happened to the numbering.
+kru task mark "$id" -s in-progress --json
+kru task show "$id" --json
+
+# Open tasks due in the next 3 days, soonest first.
+cutoff=$(date -u -v+3d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '+3 days' +%Y-%m-%dT%H:%M:%SZ)
+kru task list --json | jq --arg c "$cutoff" '[.[] | select(.due != null and .due <= $c)]'
+
+# Overdue tasks.
+now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+kru task list --json | jq --arg now "$now" '[.[] | select(.due != null and .due < $now)]'
+
+# Find a task by description, then mark it done.
+id=$(kru task list -q "flights" --json | jq -r '.[0].id')
+kru task done "$id" --json
+
+# Change several fields at once and see what changed.
+kru task mark "$id" -p medium -s in-progress --due none --json | jq '.changes'
+
+# Complete every overdue task in one call (-r: do nothing if none).
+kru task list --json | jq -r --arg now "$now" '.[] | select(.due != null and .due < $now) | .id' \
+  | xargs -r kru task done --json
+
+# Count open tasks per bucket.
+kru bucket list --json | jq 'map({(.name): .open}) | add'
+```
+
+ISO 8601 UTC timestamps compare correctly as strings, which is why the `jq`
+date filters above work. The `date` fallback covers macOS (`-v`) and GNU
+(`-d`).
+
+## Errors
+
+| Message (stderr) | Exit | Fix |
+|---|---|---|
+| `Error: no bucket given and no active bucket set` | 1 | pass `-b <bucket>` or `kru bucket use <name>` |
+| `Error: bucket \`x\` does not exist` | 1 | `kru bucket list --json` to see names, or `bucket add` |
+| `Error: no task #N` | 1 | numbers shift; use the task's `id`, or re-read with `task list --all --json` |
+| `Error: no task matches \`x\`` | 1 | check the id with `task list --all --json` |
+| `Error: \`x\` matches N tasks; use more of the id` | 1 | pass the full `id` |
+| `Error: description cannot be empty` | 1 | pass `-d <text>` |
+| `Error: invalid due date \`x\` (try …)` | 1 | use a format from the table above |
+| `Error: bucket \`x\` still has N open task(s); use --force …` | 1 | move or finish the tasks, or pass `--force` |
+| `Error: nothing to change; pass any of …` | 1 | give `task mark` at least one field flag |
+| `error: invalid value 'x' for '--status …'` | 2 | bad argument; see `--help` |
+
+## Example session
+
+```sh
+$ kru bucket add home --json
+{"name": "home", "id": "01a125dc-…", "active": true, "open": 0, "done": 0}
+
+$ id=$(kru task add -d "Pay rent" -p high --due tomorrow --json | jq -r '.id')
+
+$ kru task show "$id" --json | jq '{num, due}'
+{"num": 1, "due": "2026-10-11T18:29:59Z"}
+
+$ kru task mark "$id" -s in-progress --json | jq '.changes'
+[{"field": "status", "from": "todo", "to": "in-progress"}]
+
+$ kru task done "$id" --json | jq '.[0] | {status, completed}'
+{"status": "done", "completed": "2026-10-10T12:49:45.743686Z"}
+
+$ kru task list --json
+[]
+
+$ kru task list --all --json | jq 'length'
+1
+```

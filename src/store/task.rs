@@ -39,6 +39,33 @@ impl Store {
         Ok(self.entry(num)?.task.header.id)
     }
 
+    /// Resolves a task reference typed by a user or agent: a task number
+    /// (`3`), a full id, or the start of an id (`01a125dc-bcef`),
+    /// case-insensitive. A reference of only digits is always a number.
+    /// Fails if nothing matches or an id prefix matches several tasks.
+    ///
+    /// Numbers can shift as tasks are added, moved or removed; ids never
+    /// change.
+    pub fn resolve(&self, reference: &str) -> Result<Uuid> {
+        let reference = reference.trim();
+        if let Ok(num) = reference.parse::<usize>() {
+            return self.id_of(num);
+        }
+        let prefix = reference.to_lowercase();
+        let mut matches = self
+            .entries()
+            .map(|entry| entry.task.header.id)
+            .filter(|id| !prefix.is_empty() && id.to_string().starts_with(&prefix));
+        match (matches.next(), matches.count()) {
+            (Some(id), 0) => Ok(id),
+            (Some(_), others) => Err(Error::AmbiguousTask {
+                reference: reference.to_string(),
+                count: others + 1,
+            }),
+            (None, _) => Err(Error::NoTaskMatches(reference.to_string())),
+        }
+    }
+
     /// Adds a task to the named bucket, or to the active bucket if `None`.
     /// Fails if the bucket does not exist or the description is empty once
     /// cleaned.
@@ -181,6 +208,42 @@ mod tests {
         assert_eq!(store.active_bucket().unwrap().name, "home");
         assert!(matches!(store.entry(0), Err(Error::TaskNumberNotFound(0))));
         assert!(matches!(store.entry(4), Err(Error::TaskNumberNotFound(4))));
+    }
+
+    #[test]
+    fn tasks_resolve_by_number_or_id() {
+        let dir = TempDir::new();
+        let mut store = Store::open(&dir.0).unwrap();
+        store.add_bucket("home").unwrap();
+        let with_id = |description: &str, id: &str| {
+            let mut task = Task::new(description);
+            task.header.id = id.parse().unwrap();
+            task
+        };
+        let first = "01a125dc-bcef-7784-8fc5-000000000001";
+        let second = "01a125dc-bcef-7784-8fc5-100000000002";
+        store.add_task(None, with_id("a", first)).unwrap();
+        store.add_task(None, with_id("b", second)).unwrap();
+        let id = |s: &str| s.parse::<Uuid>().unwrap();
+
+        assert_eq!(store.resolve("2").unwrap(), id(second));
+        assert_eq!(store.resolve(second).unwrap(), id(second));
+        assert_eq!(store.resolve(&second.to_uppercase()).unwrap(), id(second));
+        assert_eq!(
+            store.resolve(" 01a125dc-bcef-7784-8fc5-1 ").unwrap(),
+            id(second)
+        );
+
+        assert!(matches!(
+            store.resolve("01a125dc"),
+            Err(Error::AmbiguousTask { count: 2, .. })
+        ));
+        assert!(matches!(
+            store.resolve("3"),
+            Err(Error::TaskNumberNotFound(3))
+        ));
+        assert!(matches!(store.resolve("zz"), Err(Error::NoTaskMatches(_))));
+        assert!(matches!(store.resolve(""), Err(Error::NoTaskMatches(_))));
     }
 
     #[test]

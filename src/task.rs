@@ -197,9 +197,10 @@ impl Task {
             .zip(self.fields())
             .filter(|(old, new)| keys.contains(&old.key) && old.value != new.value)
             .map(|(old, new)| Change {
+                key: old.key,
                 label: old.label,
-                from: old.value.short(),
-                to: new.value.short(),
+                from: old.value,
+                to: new.value,
             })
             .collect()
     }

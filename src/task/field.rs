@@ -175,14 +175,22 @@ impl Field {
 /// One field changed by an edit, e.g. `priority: low → high`.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Change {
+    pub key: &'static str,
     pub label: &'static str,
-    pub from: String,
-    pub to: String,
+    pub from: Value,
+    pub to: Value,
 }
 
 impl Display for Change {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let shown = |value: &str| if value.is_empty() { "—" } else { value }.to_string();
+        let shown = |value: &Value| {
+            let text = value.short();
+            if text.is_empty() {
+                "—".to_string()
+            } else {
+                text
+            }
+        };
         write!(
             f,
             "{}: {} → {}",

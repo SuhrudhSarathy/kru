@@ -4,7 +4,7 @@ use kru::Store;
 use kru::task::{Priority, Status, Task};
 use uuid::Uuid;
 
-use super::{FieldInput, output};
+use super::{FieldInput, json, output};
 
 #[derive(Subcommand)]
 pub enum TaskCommand {
@@ -21,25 +21,29 @@ pub enum TaskCommand {
     List(ListArgs),
 
     /// Show every detail of a task
-    Show { num: usize },
+    Show {
+        #[arg(help = TASK_HELP)]
+        task: String,
+    },
 
     /// Change a task's fields with the flags below
     #[command(visible_alias = "edit")]
     Mark {
-        /// Task number, as shown by `kru task list`
-        num: usize,
+        #[arg(help = TASK_HELP)]
+        task: String,
     },
 
     /// Mark one or more tasks as done
     Done {
-        #[arg(required = true)]
-        nums: Vec<usize>,
+        #[arg(required = true, help = TASKS_HELP)]
+        tasks: Vec<String>,
     },
 
     /// Move a task to another bucket
     #[command(visible_alias = "mv")]
     Move {
-        num: usize,
+        #[arg(help = TASK_HELP)]
+        task: String,
 
         /// Destination bucket
         #[arg(short, long)]
@@ -49,10 +53,13 @@ pub enum TaskCommand {
     /// Remove one or more tasks
     #[command(visible_alias = "rm")]
     Remove {
-        #[arg(required = true)]
-        nums: Vec<usize>,
+        #[arg(required = true, help = TASKS_HELP)]
+        tasks: Vec<String>,
     },
 }
+
+const TASK_HELP: &str = "Task number or id (or the start of an id), as shown by `kru task list`";
+const TASKS_HELP: &str = "Task numbers or ids (or the start of ids)";
 
 #[derive(Args)]
 pub struct ListArgs {
@@ -78,8 +85,13 @@ pub struct ListArgs {
 }
 
 /// Runs a `kru task …` command. `fields` are the field flags given to
-/// `add` or `mark`.
-pub fn run(command: TaskCommand, store: &mut Store, fields: &[FieldInput]) -> Result<()> {
+/// `add` or `mark`; `as_json` prints JSON instead of text.
+pub fn run(
+    command: TaskCommand,
+    store: &mut Store,
+    fields: &[FieldInput],
+    as_json: bool,
+) -> Result<()> {
     match command {
         TaskCommand::Add { bucket } => {
             let mut task = Task::new("");
@@ -89,23 +101,41 @@ pub fn run(command: TaskCommand, store: &mut Store, fields: &[FieldInput]) -> Re
             let id = store.add_task(bucket.as_deref(), task)?;
             store.save()?;
             let entry = store.find(id)?;
-            println!("Added task #{} to {}.", entry.num, entry.bucket.name);
+            if as_json {
+                json::print(json::entry(&entry));
+            } else {
+                println!("Added task #{} to {}.", entry.num, entry.bucket.name);
+            }
         }
 
-        TaskCommand::List(args) => list(store, args)?,
+        TaskCommand::List(args) => list(store, args, as_json)?,
 
-        TaskCommand::Show { num } => output::print_task_details(&store.entry(num)?),
+        TaskCommand::Show { task } => {
+            let entry = store.find(store.resolve(&task)?)?;
+            if as_json {
+                json::print(json::entry(&entry));
+            } else {
+                output::print_task_details(&entry);
+            }
+        }
 
-        TaskCommand::Mark { num } => {
+        TaskCommand::Mark { task } => {
             if fields.is_empty() {
                 bail!(
                     "nothing to change; pass any of {}",
                     super::fields::flag_list()
                 );
             }
-            let id = store.id_of(num)?;
+            let id = store.resolve(&task)?;
             let changes = store.edit_task(id, fields)?;
+            let num = store.find(id)?.num;
             store.save()?;
+            if as_json {
+                let changes: Vec<_> = changes.iter().map(json::change).collect();
+                let task = json::entry(&store.find(id)?);
+                json::print(serde_json::json!({ "task": task, "changes": changes }));
+                return Ok(());
+            }
             if changes.is_empty() {
                 println!("#{num}: nothing changed.");
             }
@@ -114,33 +144,55 @@ pub fn run(command: TaskCommand, store: &mut Store, fields: &[FieldInput]) -> Re
             }
         }
 
-        TaskCommand::Done { nums } => {
-            for (num, id) in resolve(store, nums)? {
+        TaskCommand::Done { tasks } => {
+            let mut done = Vec::new();
+            for (num, id) in resolve(store, &tasks)? {
                 store.edit_task(id, &[("status", "done")])?;
-                println!("Done #{num} {}", store.find(id)?.task.description);
+                let entry = store.find(id)?;
+                if as_json {
+                    done.push(json::entry(&entry));
+                } else {
+                    println!("Done #{num} {}", entry.task.description);
+                }
             }
             store.save()?;
+            if as_json {
+                json::print(done.into());
+            }
         }
 
-        TaskCommand::Move { num, bucket } => {
-            let id = store.id_of(num)?;
+        TaskCommand::Move { task, bucket } => {
+            let id = store.resolve(&task)?;
             store.move_task(id, &bucket)?;
             store.save()?;
             let entry = store.find(id)?;
-            println!(
-                "Moved task to {}; it is now #{}.",
-                entry.bucket.name, entry.num
-            );
+            if as_json {
+                json::print(json::entry(&entry));
+            } else {
+                println!(
+                    "Moved task to {}; it is now #{}.",
+                    entry.bucket.name, entry.num
+                );
+            }
         }
 
-        TaskCommand::Remove { nums } => {
+        TaskCommand::Remove { tasks } => {
             // Resolve every number before removing anything, since removal
             // renumbers the tasks after it.
-            for (num, id) in resolve(store, nums)? {
+            let mut removed = Vec::new();
+            for (num, id) in resolve(store, &tasks)? {
+                let bucket = store.find(id)?.bucket.name.clone();
                 let task = store.remove_task(id)?;
-                println!("Removed #{num} {}", task.description);
+                if as_json {
+                    removed.push(json::task(num, &bucket, &task));
+                } else {
+                    println!("Removed #{num} {}", task.description);
+                }
             }
             store.save()?;
+            if as_json {
+                json::print(removed.into());
+            }
         }
     }
     Ok(())
@@ -149,7 +201,7 @@ pub fn run(command: TaskCommand, store: &mut Store, fields: &[FieldInput]) -> Re
 /// Prints the tasks matching the filters, most urgent first (open tasks
 /// before done ones). Done tasks are hidden unless `--all` or `--status`
 /// is given.
-fn list(store: &Store, args: ListArgs) -> Result<()> {
+fn list(store: &Store, args: ListArgs, as_json: bool) -> Result<()> {
     let bucket = match &args.bucket {
         Some(name) => Some(store.bucket(name)?.header.id),
         None => None,
@@ -181,6 +233,10 @@ fn list(store: &Store, args: ListArgs) -> Result<()> {
             .then_with(|| a.task.cmp_urgency(b.task))
     });
 
+    if as_json {
+        json::print(json::entries(&entries));
+        return Ok(());
+    }
     if store.buckets().next().is_none() {
         println!("No buckets yet. Create one with `kru bucket add <name>`.");
     } else if entries.is_empty() {
@@ -194,11 +250,17 @@ fn list(store: &Store, args: ListArgs) -> Result<()> {
     Ok(())
 }
 
-/// Turns task numbers into ids, deduplicated, failing on any unknown number.
-fn resolve(store: &Store, mut nums: Vec<usize>) -> Result<Vec<(usize, Uuid)>> {
-    nums.sort_unstable();
-    nums.dedup();
-    nums.into_iter()
-        .map(|num| Ok((num, store.id_of(num)?)))
-        .collect()
+/// Resolves task references (numbers or ids) to `(number, id)` pairs,
+/// deduplicated and in number order, failing on any that doesn't resolve.
+/// Everything is resolved before anything changes, since changes can shift
+/// task numbers.
+fn resolve(store: &Store, references: &[String]) -> Result<Vec<(usize, Uuid)>> {
+    let mut resolved = Vec::new();
+    for reference in references {
+        let id = store.resolve(reference)?;
+        resolved.push((store.find(id)?.num, id));
+    }
+    resolved.sort_unstable();
+    resolved.dedup();
+    Ok(resolved)
 }

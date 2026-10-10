@@ -23,6 +23,12 @@ pub enum Error {
     #[error("task {0} not found")]
     TaskNotFound(Uuid),
 
+    #[error("no task matches `{0}` (expected a task number or id)")]
+    NoTaskMatches(String),
+
+    #[error("`{reference}` matches {count} tasks; use more of the id")]
+    AmbiguousTask { reference: String, count: usize },
+
     #[error("{0} cannot be empty")]
     EmptyField(&'static str),
 

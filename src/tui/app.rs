@@ -92,6 +92,7 @@ pub struct App {
 }
 
 impl App {
+    /// Starts with the active bucket selected.
     pub fn new(store: Store) -> App {
         let active = store.active_bucket().map(|b| b.header.id);
         let bucket_index = store
@@ -114,6 +115,7 @@ impl App {
         }
     }
 
+    /// The bucket highlighted in the buckets pane.
     pub fn selected_bucket(&self) -> Option<&Bucket> {
         self.store.buckets().nth(self.bucket_index)
     }
@@ -146,6 +148,7 @@ impl App {
         }
     }
 
+    /// Handles one action and shows any resulting error in the footer.
     pub fn update(&mut self, action: Action) {
         if !matches!(action, Action::Input(_) | Action::Backspace) {
             self.message = None;
@@ -161,6 +164,7 @@ impl App {
         self.clamp_selection();
     }
 
+    /// Handles an action while no prompt or confirmation is open.
     fn on_normal(&mut self, action: Action) -> Result<()> {
         match action {
             Action::Quit => self.should_quit = true,
@@ -288,6 +292,7 @@ impl App {
         Ok(())
     }
 
+    /// Handles typing in a prompt; Enter submits, Esc cancels.
     fn on_input(&mut self, action: Action) -> Result<()> {
         let Mode::Input { prompt, buffer } = &mut self.mode else {
             return Ok(());
@@ -316,6 +321,8 @@ impl App {
         Ok(())
     }
 
+    /// Acts on submitted prompt text. Bucket changes and new tasks apply
+    /// immediately; changes to an existing task open a confirmation.
     fn submit(&mut self, prompt: Prompt, text: &str) -> Result<()> {
         match prompt {
             Prompt::AddBucket => {
@@ -355,9 +362,9 @@ impl App {
             }
             Prompt::EditDue => {
                 let (id, label) = self.require_selected()?;
-                let due = kru::due::parse(text)?;
+                let due = kru::utils::due::parse(text)?;
                 let question = match due {
-                    Some(due) => format!("Set due of {label} to {}?", kru::due::format(due)),
+                    Some(due) => format!("Set due of {label} to {}?", kru::utils::due::format(due)),
                     None => format!("Clear the due date of {label}?"),
                 };
                 self.confirm_edit(
@@ -378,6 +385,7 @@ impl App {
         Ok(())
     }
 
+    /// Applies the pending change on `y`, drops it on `n`/Esc.
     fn on_confirm(&mut self, action: Action) -> Result<()> {
         match action {
             Action::Submit => {
@@ -395,6 +403,7 @@ impl App {
         Ok(())
     }
 
+    /// Performs a confirmed change through the store and saves.
     fn apply(&mut self, op: Op) -> Result<()> {
         match op {
             Op::EditTask { id, edit } => {
@@ -439,10 +448,12 @@ impl App {
         Ok((entry.task.header.id, label))
     }
 
+    /// Opens a confirmation for `op`.
     fn confirm(&mut self, question: String, op: Op) {
         self.mode = Mode::Confirm(Pending { question, op });
     }
 
+    /// Opens a confirmation for editing a task.
     fn confirm_edit(&mut self, id: Uuid, question: String, edit: TaskEdit) {
         self.confirm(question, Op::EditTask { id, edit });
     }
@@ -454,10 +465,12 @@ impl App {
         Ok(())
     }
 
+    /// Opens a text prompt, pre-filled with `buffer`.
     fn prompt(&mut self, prompt: Prompt, buffer: String) {
         self.mode = Mode::Input { prompt, buffer };
     }
 
+    /// Highlights the bucket with this id.
     fn select_bucket(&mut self, id: Uuid) {
         if let Some(index) = self.store.buckets().position(|b| b.header.id == id) {
             self.bucket_index = index;
@@ -465,6 +478,7 @@ impl App {
         }
     }
 
+    /// Highlights the open task with this id, if it is in the current bucket.
     fn select_task(&mut self, id: Uuid) {
         if let Some(index) = self
             .open_tasks()
@@ -475,6 +489,7 @@ impl App {
         }
     }
 
+    /// Keeps every selection index within its list after items change.
     fn clamp_selection(&mut self) {
         let buckets = self.store.buckets().count();
         self.bucket_index = self.bucket_index.min(buckets.saturating_sub(1));
@@ -484,6 +499,7 @@ impl App {
         self.done_index = self.done_index.min(done.saturating_sub(1));
     }
 
+    /// Shows a success message in the footer.
     fn info(&mut self, text: impl Into<String>) {
         self.message = Some(Message {
             text: text.into(),
@@ -491,6 +507,7 @@ impl App {
         });
     }
 
+    /// Shows an error message in the footer.
     fn error(&mut self, text: impl Into<String>) {
         self.message = Some(Message {
             text: text.into(),
@@ -511,6 +528,7 @@ impl From<kru::Error> for UiError {
 
 type Result<T> = std::result::Result<T, UiError>;
 
+/// The error for task actions when no task is highlighted.
 fn no_task_selected(focus: Focus) -> UiError {
     let text = match focus {
         Focus::Buckets => "No task selected: press l or tab to go to the tasks",
@@ -519,6 +537,7 @@ fn no_task_selected(focus: Focus) -> UiError {
     UiError(text.to_string())
 }
 
+/// Truncates `text` to `max` characters, ending with `…` if cut.
 fn shorten(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         text.to_string()

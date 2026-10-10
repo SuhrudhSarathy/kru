@@ -13,6 +13,8 @@ use ratatui::crossterm::event::{Event, KeyEventKind, read};
 
 use app::App;
 
+/// Opens the TUI and blocks until the user quits.
+/// The terminal is restored even if the loop returns an error.
 pub fn run(store: Store) -> Result<()> {
     let mut terminal = ratatui::init();
     let result = event_loop(&mut terminal, App::new(store));
@@ -20,6 +22,7 @@ pub fn run(store: Store) -> Result<()> {
     result
 }
 
+/// Draws, waits for a key, applies the matching action; repeats until quit.
 fn event_loop(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
     while !app.should_quit {
         terminal.draw(|frame| ui::render(frame, &app))?;

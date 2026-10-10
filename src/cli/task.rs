@@ -110,10 +110,12 @@ pub struct ListArgs {
 #[derive(Clone)]
 pub struct Due(Option<Timestamp>);
 
+/// clap value parser for `--due`.
 fn parse_due(input: &str) -> kru::Result<Due> {
-    kru::due::parse(input).map(Due)
+    kru::utils::due::parse(input).map(Due)
 }
 
+/// Runs a `kru task …` command.
 pub fn run(command: TaskCommand, store: &mut Store) -> Result<()> {
     match command {
         TaskCommand::Add {
@@ -194,6 +196,8 @@ pub fn run(command: TaskCommand, store: &mut Store) -> Result<()> {
     Ok(())
 }
 
+/// Prints the tasks matching the filters; done tasks are hidden
+/// unless `--all` or `--status` is given.
 fn list(store: &Store, args: ListArgs) -> Result<()> {
     let bucket = match &args.bucket {
         Some(name) => Some(store.bucket(name)?.header.id),

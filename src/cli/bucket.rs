@@ -30,6 +30,7 @@ pub enum BucketCommand {
     },
 }
 
+/// Runs a `kru bucket …` command.
 pub fn run(command: BucketCommand, store: &mut Store) -> Result<()> {
     match command {
         BucketCommand::Add { name } => {

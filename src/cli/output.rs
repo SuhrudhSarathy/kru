@@ -6,13 +6,14 @@ use jiff::tz::TimeZone;
 use kru::task::{Priority, Status};
 use kru::{Entry, Store};
 
+/// Prints tasks as a table; done tasks are dimmed, overdue dates red.
 pub fn print_tasks(entries: &[Entry]) {
     let now = Timestamp::now();
     let mut table = new_table(["#", "Bucket", "Priority", "Status", "Due", "Description"]);
 
     for entry in entries {
         let task = entry.task;
-        let due = Cell::new(task.due.map(kru::due::format).unwrap_or_default());
+        let due = Cell::new(task.due.map(kru::utils::due::format).unwrap_or_default());
         let mut row = vec![
             Cell::new(entry.num).fg(Color::Cyan),
             Cell::new(&entry.bucket.name),
@@ -36,6 +37,7 @@ pub fn print_tasks(entries: &[Entry]) {
     println!("{table}");
 }
 
+/// Prints every field of one task.
 pub fn print_task_details(entry: &Entry) {
     let task = entry.task;
     println!("#{}  {}", entry.num, task.description);
@@ -45,7 +47,9 @@ pub fn print_task_details(entry: &Entry) {
         ("status", task.status.to_string()),
         (
             "due",
-            task.due.map(kru::due::format).unwrap_or_else(|| "-".into()),
+            task.due
+                .map(kru::utils::due::format)
+                .unwrap_or_else(|| "-".into()),
         ),
         ("created", local_time(task.header.time_created)),
         ("edited", local_time(task.header.time_last_edited)),
@@ -60,6 +64,7 @@ pub fn print_task_details(entry: &Entry) {
     }
 }
 
+/// Prints buckets with open/done counts; `*` marks the active one.
 pub fn print_buckets(store: &Store) {
     let active = store.active_bucket().map(|b| b.header.id);
     let mut table = new_table(["", "Bucket", "Open", "Done"]);
@@ -76,6 +81,7 @@ pub fn print_buckets(store: &Store) {
     println!("{table}");
 }
 
+/// A borderless table with a bold header row.
 fn new_table<const N: usize>(header: [&str; N]) -> Table {
     let mut table = Table::new();
     table
@@ -85,6 +91,7 @@ fn new_table<const N: usize>(header: [&str; N]) -> Table {
     table
 }
 
+/// Priority coloured by importance.
 fn priority_cell(priority: Priority) -> Cell {
     let cell = Cell::new(priority);
     match priority {
@@ -94,6 +101,7 @@ fn priority_cell(priority: Priority) -> Cell {
     }
 }
 
+/// Status coloured by progress.
 fn status_cell(status: Status) -> Cell {
     let cell = Cell::new(status);
     match status {
@@ -103,6 +111,7 @@ fn status_cell(status: Status) -> Cell {
     }
 }
 
+/// Formats a timestamp in the local time zone.
 fn local_time(ts: Timestamp) -> String {
     ts.to_zoned(TimeZone::system())
         .strftime("%Y-%m-%d %H:%M")

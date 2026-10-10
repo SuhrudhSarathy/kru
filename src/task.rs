@@ -4,8 +4,8 @@ use std::str::FromStr;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-use crate::error::Error;
-use crate::utils::Header;
+use crate::utils::error::Error;
+use crate::utils::header::Header;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Priority {
@@ -92,6 +92,7 @@ pub struct Task {
 }
 
 impl Task {
+    /// Creates a low-priority, to-do task with no due date.
     pub fn new(description: impl Into<String>) -> Task {
         Task {
             header: Header::new(),
@@ -103,12 +104,14 @@ impl Task {
         }
     }
 
+    /// Builder: sets the priority.
     pub fn with_priority(mut self, priority: Priority) -> Task {
         self.header = self.header.update_edited();
         self.priority = priority;
         self
     }
 
+    /// Builder: sets the due date.
     pub fn with_due(mut self, due: Timestamp) -> Task {
         self.header = self.header.update_edited();
 
@@ -116,6 +119,8 @@ impl Task {
         self
     }
 
+    /// Sets the status, recording when the task became done
+    /// (and clearing that time when it is reopened).
     pub fn set_status(&mut self, status: Status) {
         self.header = self.header.update_edited();
         self.time_completed = match status {
@@ -143,10 +148,12 @@ impl Task {
         }
     }
 
+    /// Whether the status is [`Status::Done`].
     pub fn is_done(&self) -> bool {
         self.status == Status::Done
     }
 
+    /// Whether the task is still open and its due date is before `now`.
     pub fn is_overdue(&self, now: Timestamp) -> bool {
         !self.is_done() && self.due.is_some_and(|due| due < now)
     }
@@ -163,6 +170,7 @@ pub struct TaskEdit {
 }
 
 impl TaskEdit {
+    /// Whether the edit changes nothing.
     pub fn is_empty(&self) -> bool {
         self.description.is_none()
             && self.priority.is_none()

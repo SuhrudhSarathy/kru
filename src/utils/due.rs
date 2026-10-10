@@ -11,7 +11,7 @@
 use jiff::civil::{Date, DateTime, Weekday};
 use jiff::{Span, Timestamp, Zoned};
 
-use crate::error::{Error, Result};
+use crate::utils::error::{Error, Result};
 
 /// Parses a due date relative to the current local time.
 pub fn parse(input: &str) -> Result<Option<Timestamp>> {
@@ -78,6 +78,7 @@ pub fn format(due: Timestamp) -> String {
     }
 }
 
+/// Parses a full or abbreviated English weekday name.
 fn parse_weekday(s: &str) -> Option<Weekday> {
     let weekday = match s {
         "mon" | "monday" => Weekday::Monday,

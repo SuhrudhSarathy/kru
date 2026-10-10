@@ -38,6 +38,7 @@ pub enum Command {
     Path,
 }
 
+/// Runs a parsed command against the store.
 pub fn run(command: Command, store: &mut Store) -> Result<()> {
     match command {
         Command::Task(command) => task::run(command, store),

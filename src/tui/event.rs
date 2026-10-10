@@ -7,6 +7,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::app::{Action, Mode};
 
+/// The action for `key` in the current mode, if any.
 pub fn action_for(key: KeyEvent, mode: &Mode) -> Option<Action> {
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
         return Some(Action::Quit);
@@ -51,6 +52,7 @@ pub fn action_for(key: KeyEvent, mode: &Mode) -> Option<Action> {
     Some(action)
 }
 
+/// An [`Action::InvalidKey`] naming the key, e.g. `z` or `Control+x`.
 fn invalid(key: KeyEvent) -> Action {
     let name = match key.code {
         KeyCode::Char(' ') => "space".to_string(),

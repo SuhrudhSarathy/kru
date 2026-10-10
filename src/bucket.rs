@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use crate::task::{Status, Task};
-use crate::utils::Header;
+use crate::utils::header::Header;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Bucket {
@@ -13,6 +13,7 @@ pub struct Bucket {
 }
 
 impl Bucket {
+    /// Creates an empty bucket with a fresh id.
     pub fn new(name: impl Into<String>) -> Bucket {
         Bucket {
             header: Header::new(),
@@ -21,20 +22,24 @@ impl Bucket {
         }
     }
 
+    /// Inserts a task and returns its id.
     pub fn add(&mut self, task: Task) -> Uuid {
         let id = task.header.id;
         self.tasks.insert(id, task);
         id
     }
 
+    /// Looks up a task by id.
     pub fn get(&self, id: Uuid) -> Option<&Task> {
         self.tasks.get(&id)
     }
 
+    /// Looks up a task by id for editing in place.
     pub fn get_mut(&mut self, id: Uuid) -> Option<&mut Task> {
         self.tasks.get_mut(&id)
     }
 
+    /// Removes a task by id, returning it if it existed.
     pub fn remove(&mut self, id: Uuid) -> Option<Task> {
         self.tasks.remove(&id)
     }
@@ -59,16 +64,19 @@ impl Bucket {
         self.iter().filter(|t| !t.is_done()).count()
     }
 
+    /// All tasks, in creation order.
     pub fn iter(&self) -> impl Iterator<Item = &Task> {
         self.tasks.values()
     }
 
+    /// Tasks whose description contains `query` (case-insensitive).
     pub fn search(&self, query: &str) -> impl Iterator<Item = &Task> {
         let query = query.to_lowercase();
         self.iter()
             .filter(move |t| t.description.to_lowercase().contains(&query))
     }
 
+    /// Tasks with the given status.
     pub fn with_status(&self, status: Status) -> impl Iterator<Item = &Task> {
         self.iter().filter(move |t| t.status == status)
     }

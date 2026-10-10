@@ -12,6 +12,8 @@ use ratatui::widgets::{
 
 use super::app::{App, Focus, Mode, Pending, Prompt};
 
+/// Draws the whole screen: buckets and open tasks on top, done tasks
+/// below, the footer, and any open prompt or confirmation.
 pub fn render(frame: &mut Frame, app: &App) {
     let [main, done, footer] = Layout::vertical([
         Constraint::Fill(2),
@@ -34,6 +36,7 @@ pub fn render(frame: &mut Frame, app: &App) {
     }
 }
 
+/// The buckets pane, with open-task counts; `*` marks the active one.
 fn render_buckets(frame: &mut Frame, app: &App, area: Rect) {
     let block = pane("Buckets", app.focus == Focus::Buckets);
     if app.store.buckets().next().is_none() {
@@ -69,6 +72,7 @@ fn render_buckets(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_stateful_widget(list, area, &mut state);
 }
 
+/// Open tasks of the selected bucket.
 fn render_tasks(frame: &mut Frame, app: &App, area: Rect) {
     let title = match app.selected_bucket() {
         Some(bucket) => format!("Tasks in {}", bucket.name),
@@ -90,7 +94,7 @@ fn render_tasks(frame: &mut Frame, app: &App, area: Rect) {
     let now = Timestamp::now();
     let rows = tasks.iter().map(|entry| {
         let task = entry.task;
-        let due = task.due.map(kru::due::format).unwrap_or_default();
+        let due = task.due.map(kru::utils::due::format).unwrap_or_default();
         let due = if task.is_overdue(now) {
             Cell::from(due).red()
         } else {
@@ -146,7 +150,7 @@ fn render_done(frame: &mut Frame, app: &App, area: Rect) {
         let task = entry.task;
         let completed = task
             .time_completed
-            .map(kru::due::format)
+            .map(kru::utils::due::format)
             .unwrap_or_default();
         Row::new(vec![
             Cell::from(entry.num.to_string()).cyan(),
@@ -174,6 +178,7 @@ fn render_done(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_stateful_widget(table, area, &mut state);
 }
 
+/// The latest message and the keys available right now.
 fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
     let message = match &app.message {
         Some(message) if message.is_error => Line::from(message.text.as_str()).red(),
@@ -197,6 +202,7 @@ fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(footer, area);
 }
 
+/// A centred text prompt with the cursor at the end of the input.
 fn render_input(frame: &mut Frame, app: &App, prompt: Prompt, buffer: &str) {
     let title = match prompt {
         Prompt::AddBucket => "New bucket".to_string(),
@@ -223,6 +229,7 @@ fn render_input(frame: &mut Frame, app: &App, prompt: Prompt, buffer: &str) {
     frame.set_cursor_position((cursor_x.min(area.right() - 2), area.y + 1));
 }
 
+/// A centred y/n popup, tall enough for the wrapped question.
 fn render_confirm(frame: &mut Frame, pending: &Pending) {
     let width = 70.min(frame.area().width);
     let text_width = width.saturating_sub(2).max(1);
@@ -240,6 +247,7 @@ fn render_confirm(frame: &mut Frame, pending: &Pending) {
     );
 }
 
+/// A bordered block, highlighted when focused.
 fn pane(title: &str, focused: bool) -> Block<'static> {
     let block = Block::bordered().title(format!(" {title} "));
     if focused {
@@ -249,6 +257,7 @@ fn pane(title: &str, focused: bool) -> Block<'static> {
     }
 }
 
+/// Row highlight: strong in the focused pane, subtle elsewhere.
 fn highlight(focused: bool) -> Style {
     if focused {
         Style::new().reversed()
@@ -257,6 +266,7 @@ fn highlight(focused: bool) -> Style {
     }
 }
 
+/// Colour for a priority.
 fn priority_style(priority: Priority) -> Style {
     match priority {
         Priority::High => Style::new().fg(Color::Red),
@@ -265,6 +275,7 @@ fn priority_style(priority: Priority) -> Style {
     }
 }
 
+/// Colour for a status.
 fn status_style(status: Status) -> Style {
     match status {
         Status::ToDo => Style::new(),
@@ -273,6 +284,7 @@ fn status_style(status: Status) -> Style {
     }
 }
 
+/// A `width` × `height` rectangle centred in `area`.
 fn popup_area(area: Rect, width: u16, height: u16) -> Rect {
     let [area] = Layout::horizontal([Constraint::Length(width.min(area.width))])
         .flex(Flex::Center)

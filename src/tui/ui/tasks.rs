@@ -1,9 +1,12 @@
 //! The task tables: open tasks of the selected bucket, and done tasks of
-//! every bucket. Descriptions wrap within their column, and each row is as
-//! tall as its description.
+//! every bucket.
+//!
+//! Columns come from the tasks' own fields ([`kru::task::Task::fields`]),
+//! so a new listed field shows up here without changes. Descriptions wrap
+//! within the last column, and each row is as tall as its description.
 
-use jiff::Timestamp;
-use kru::utils::due;
+use kru::Entry;
+use kru::task::{Field, field};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::Stylize;
@@ -18,13 +21,11 @@ use crate::tui::app::{App, Focus};
 /// Gap between columns, in cells.
 const COLUMN_SPACING: u16 = 1;
 
-/// Widths of the open-tasks columns before the description: #, priority,
-/// status, due.
-const OPEN_COLUMNS: [u16; 4] = [4, 8, 11, 20];
+/// Narrowest the description column gets.
+const MIN_DESCRIPTION: u16 = 10;
 
-/// Widths of the done-tasks columns before the description: #, bucket,
-/// priority, completed.
-const DONE_COLUMNS: [u16; 4] = [4, 14, 8, 20];
+/// Widest the bucket column gets; longer names are cut off.
+const MAX_BUCKET: u16 = 20;
 
 /// Open tasks of the selected bucket.
 pub(super) fn render_open(frame: &mut Frame, app: &App, area: Rect) {
@@ -46,30 +47,8 @@ pub(super) fn render_open(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let width = description_width(block.inner(area).width, &OPEN_COLUMNS);
-    let now = Timestamp::now();
-    let rows = tasks.iter().map(|entry| {
-        let task = entry.task;
-        let due = Cell::from(task.due.map(due::format).unwrap_or_default());
-        let (description, height) = description_cell(&task.description, width);
-        Row::new(vec![
-            Cell::from(entry.num.to_string()).style(style::fg(theme::NUMBER)),
-            Cell::from(task.priority.to_string()).style(style::priority(task.priority)),
-            Cell::from(task.status.to_string()).style(style::status(task.status)),
-            if task.is_overdue(now) {
-                due.style(style::fg(theme::OVERDUE))
-            } else {
-                due
-            },
-            description,
-        ])
-        .height(height)
-    });
-
-    let header = Row::new(["#", "Priority", "Status", "Due", "Description"]).bold();
-    let table = Table::new(rows, column_widths(&OPEN_COLUMNS))
-        .column_spacing(COLUMN_SPACING)
-        .header(header)
+    let width = block.inner(area).width;
+    let table = task_table(&tasks, false, false, width)
         .block(block)
         .row_highlight_style(style::highlight(focused));
     let mut state = TableState::default().with_selected(Some(app.task_index));
@@ -91,44 +70,75 @@ pub(super) fn render_done(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let width = description_width(block.inner(area).width, &DONE_COLUMNS);
-    let rows = tasks.iter().map(|entry| {
-        let task = entry.task;
-        let completed = task.time_completed.map(due::format).unwrap_or_default();
-        let (description, height) = description_cell(&task.description, width);
-        Row::new(vec![
-            Cell::from(entry.num.to_string()).style(style::fg(theme::NUMBER)),
-            Cell::from(entry.bucket.name.as_str()),
-            Cell::from(task.priority.to_string()).style(style::priority(task.priority)),
-            Cell::from(completed),
-            description,
-        ])
-        .height(height)
-        .dark_gray()
-    });
-
-    let header = Row::new(["#", "Bucket", "Priority", "Completed", "Description"]).bold();
-    let table = Table::new(rows, column_widths(&DONE_COLUMNS))
-        .column_spacing(COLUMN_SPACING)
-        .header(header)
+    let width = block.inner(area).width;
+    let table = task_table(&tasks, true, true, width)
         .block(block)
         .row_highlight_style(style::highlight(focused));
     let mut state = TableState::default().with_selected(Some(app.done_index));
     frame.render_stateful_widget(table, area, &mut state);
 }
 
-/// The fixed columns, then a description column taking the rest.
-fn column_widths(fixed: &[u16; 4]) -> [Constraint; 5] {
-    let [a, b, c, d] = fixed.map(Constraint::Length);
-    [a, b, c, d, Constraint::Min(10)]
+/// A table of `entries`, `width` cells wide: the task number, the bucket
+/// (if `with_bucket`), every listed field, then the wrapped description.
+/// `dim` greys out the rows.
+fn task_table(entries: &[Entry], with_bucket: bool, dim: bool, width: u16) -> Table<'static> {
+    let fields: Vec<Vec<Field>> = entries.iter().map(|e| e.task.fields()).collect();
+    let columns = field::list_columns(&fields);
+
+    // Every column but the description, sized to its widest content.
+    let mut titles = vec!["#"];
+    let mut widths = vec![column_width("#", entries.iter().map(|e| e.num.to_string()))];
+    if with_bucket {
+        let names = entries.iter().map(|e| e.bucket.name.clone());
+        titles.push("Bucket");
+        widths.push(column_width("Bucket", names).min(MAX_BUCKET));
+    }
+    for &i in &columns {
+        let label = fields[0][i].label;
+        titles.push(label);
+        widths.push(column_width(
+            label,
+            fields.iter().map(|f| f[i].value.short()),
+        ));
+    }
+    titles.push("Description");
+
+    // The description gets what the other columns and the gaps leave.
+    let used = widths.iter().sum::<u16>() + COLUMN_SPACING * widths.len() as u16;
+    let description_width = usize::from(width.saturating_sub(used)).max(1);
+
+    let rows: Vec<Row> = entries
+        .iter()
+        .zip(&fields)
+        .map(|(entry, fields)| {
+            let mut cells = vec![Cell::from(entry.num.to_string()).style(style::fg(theme::NUMBER))];
+            if with_bucket {
+                cells.push(Cell::from(entry.bucket.name.clone()));
+            }
+            for &i in &columns {
+                let field = &fields[i];
+                cells.push(Cell::from(field.value.short()).style(style::tone(field.tone)));
+            }
+            let (description, height) =
+                description_cell(&entry.task.description, description_width);
+            cells.push(description);
+
+            let row = Row::new(cells).height(height);
+            if dim { row.dark_gray() } else { row }
+        })
+        .collect();
+
+    let mut constraints: Vec<Constraint> = widths.into_iter().map(Constraint::Length).collect();
+    constraints.push(Constraint::Min(MIN_DESCRIPTION));
+    Table::new(rows, constraints)
+        .column_spacing(COLUMN_SPACING)
+        .header(Row::new(titles).bold())
 }
 
-/// Width left for the description in a table `table_width` wide: what the
-/// fixed columns and the gaps between all columns don't use.
-fn description_width(table_width: u16, fixed: &[u16]) -> usize {
-    let gaps = COLUMN_SPACING * fixed.len() as u16;
-    let used = fixed.iter().sum::<u16>() + gaps;
-    usize::from(table_width.saturating_sub(used)).max(1)
+/// Width of a column: its widest value or its title, whichever is wider.
+fn column_width(title: &str, values: impl Iterator<Item = String>) -> u16 {
+    let widest = values.map(|v| v.chars().count()).max().unwrap_or(0);
+    widest.max(title.chars().count()) as u16
 }
 
 /// The description wrapped to `width`, and the row height it needs.

@@ -4,10 +4,12 @@
 //! - `app.rs`: the state types, [`App::update`] and footer messages
 //! - `select`: which bucket and task are selected or expanded
 //! - `normal`: actions while no prompt or confirmation is open
+//! - `edit`: editing a task's fields in the expanded view
 //! - `prompt`: text prompts and what their input does
 //! - `confirm`: changes waiting for `y`, and applying them
 
 mod confirm;
+mod edit;
 mod normal;
 mod prompt;
 mod select;
@@ -16,6 +18,7 @@ use kru::Store;
 use uuid::Uuid;
 
 pub use confirm::Pending;
+pub use edit::Editor;
 pub use prompt::Prompt;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -32,7 +35,12 @@ impl Focus {
 #[derive(Debug)]
 pub enum Mode {
     Normal,
-    Input { prompt: Prompt, buffer: String },
+    Input {
+        prompt: Prompt,
+        buffer: String,
+    },
+    /// Editing a task in the expanded view.
+    Edit(Editor),
     Confirm(Pending),
 }
 
@@ -45,6 +53,10 @@ pub enum Action {
     Expand,
     Up,
     Down,
+    /// Previous option, while editing.
+    Left,
+    /// Next option, while editing.
+    Right,
     FocusBuckets,
     FocusTasks,
     FocusNext,
@@ -116,6 +128,7 @@ impl App {
         let result = match self.mode {
             Mode::Normal => self.on_normal(action),
             Mode::Input { .. } => self.on_input(action),
+            Mode::Edit(_) => self.on_edit(action),
             Mode::Confirm(_) => self.on_confirm(action),
         };
         if let Err(UiError(err)) = result {

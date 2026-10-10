@@ -3,6 +3,7 @@ use uuid::Uuid;
 use super::Store;
 use crate::bucket::Bucket;
 use crate::utils::error::{Error, Result};
+use crate::utils::sanitize;
 
 impl Store {
     /// All buckets, in creation order.
@@ -28,7 +29,8 @@ impl Store {
 
     /// Creates a bucket. The first bucket created becomes the active one.
     pub fn add_bucket(&mut self, name: &str) -> Result<&Bucket> {
-        let name = valid_bucket_name(name)?;
+        let name = sanitize::text(name, "bucket name")?;
+        let name = name.as_str();
         if self.bucket_id(name).is_ok() {
             return Err(Error::BucketExists(name.to_string()));
         }
@@ -42,7 +44,8 @@ impl Store {
     /// Renames a bucket. Fails if another bucket already has the new name.
     pub fn rename_bucket(&mut self, name: &str, new_name: &str) -> Result<()> {
         let id = self.bucket_id(name)?;
-        let new_name = valid_bucket_name(new_name)?;
+        let new_name = sanitize::text(new_name, "bucket name")?;
+        let new_name = new_name.as_str();
         if self.bucket_id(new_name).is_ok_and(|other| other != id) {
             return Err(Error::BucketExists(new_name.to_string()));
         }
@@ -82,14 +85,6 @@ impl Store {
 }
 
 /// Trims the name and rejects it if empty.
-fn valid_bucket_name(name: &str) -> Result<&str> {
-    let name = name.trim();
-    if name.is_empty() {
-        return Err(Error::EmptyBucketName);
-    }
-    Ok(name)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,7 +127,7 @@ mod tests {
         ));
         assert!(matches!(
             store.add_bucket("  "),
-            Err(Error::EmptyBucketName)
+            Err(Error::EmptyField("bucket name"))
         ));
         store.rename_bucket("home", "house").unwrap();
         assert_eq!(store.bucket("HOUSE").unwrap().name, "house");

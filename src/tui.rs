@@ -105,7 +105,14 @@ mod tests {
         // n cancels, y applies.
         press(&mut app, KeyCode::Char('n'));
         assert_eq!(task(&app, 1).status, Status::ToDo);
+        // s opens the editor on Status; l changes it in place, and Esc asks
+        // to save.
         press(&mut app, KeyCode::Char('s'));
+        assert!(matches!(&app.mode, Mode::Edit(editor) if editor.cursor == "status"));
+        press(&mut app, KeyCode::Char('l'));
+        assert_eq!(task(&app, 1).status, Status::ToDo);
+        press(&mut app, KeyCode::Esc);
+        assert!(matches!(app.mode, Mode::Confirm(_)));
         press(&mut app, KeyCode::Char('y'));
         assert_eq!(task(&app, 1).status, Status::InProgress);
 
@@ -114,17 +121,23 @@ mod tests {
         assert!(matches!(app.mode, Mode::Normal));
         assert_eq!(task(&app, 1).priority, Priority::Medium);
 
-        // A bad due date keeps the prompt open; a good one asks first.
+        // d starts typing a due date; a bad one is refused and typing goes
+        // on, a good one is saved after Esc and y.
         app.update(Action::EditDue);
         type_text(&mut app, "not a date");
         assert!(app.message.as_ref().unwrap().is_error);
-        assert!(matches!(app.mode, Mode::Input { .. }));
-        app.update(Action::Cancel);
-        app.update(Action::EditDue);
+        assert!(matches!(&app.mode, Mode::Edit(editor) if editor.typing.is_some()));
+        for _ in 0.."not a date".len() {
+            app.update(Action::Backspace);
+        }
         type_text(&mut app, "tomorrow");
         assert!(task(&app, 1).due.is_none());
-        press(&mut app, KeyCode::Char('y'));
+        save(&mut app);
         assert!(task(&app, 1).due.is_some());
+        assert!(
+            app.expanded.is_none(),
+            "opened from the list, so closed after"
+        );
 
         // Unknown keys raise an error and change nothing.
         press(&mut app, KeyCode::Char('z'));
@@ -187,12 +200,83 @@ mod tests {
         press(&mut app, KeyCode::Char('j'));
         app.update(Action::EditDue);
         type_text(&mut app, "tomorrow");
-        press(&mut app, KeyCode::Char('y'));
+        save(&mut app);
         assert_eq!(order(&app), ["Water plants", "Pay rent"]);
         assert_eq!(
             app.selected_task().unwrap().task.description,
             "Water plants"
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Esc to finish editing, then y to save.
+    fn save(app: &mut App) {
+        press(app, KeyCode::Esc);
+        assert!(matches!(app.mode, Mode::Confirm(_)), "{:?}", app.mode);
+        press(app, KeyCode::Char('y'));
+    }
+
+    #[test]
+    fn e_edits_fields_in_the_expanded_view() {
+        let dir = std::env::temp_dir().join(format!("kru-tui-{}", uuid::Uuid::new_v4()));
+        let mut app = App::new(Store::open(&dir).unwrap());
+        app.update(Action::Add);
+        type_text(&mut app, "home");
+        app.update(Action::FocusTasks);
+        app.update(Action::Add);
+        type_text(&mut app, "Buy milk");
+
+        // e opens the task in edit mode, on the first editable field.
+        press(&mut app, KeyCode::Char('e'));
+        assert!(matches!(&app.mode, Mode::Edit(editor) if editor.cursor == "description"));
+        let screen_text = screen(&app);
+        assert!(screen_text.contains("Editing task #1"), "{screen_text}");
+        assert!(screen_text.contains("Created"), "{screen_text}");
+
+        // Text is typed in place, starting from the current value.
+        press(&mut app, KeyCode::Enter);
+        for _ in 0.."milk".len() {
+            app.update(Action::Backspace);
+        }
+        type_text(&mut app, "oat   milk");
+
+        // Choices change in place with h/l; going back and forth is fine.
+        press(&mut app, KeyCode::Char('j'));
+        press(&mut app, KeyCode::Char('l'));
+        press(&mut app, KeyCode::Char('l'));
+        press(&mut app, KeyCode::Char('h'));
+        let staged: Vec<_> = app
+            .draft_changes()
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert_eq!(
+            staged,
+            [
+                "description: Buy milk → Buy oat milk",
+                "priority: low → medium"
+            ]
+        );
+        let screen_text = screen(&app);
+        assert!(screen_text.contains("(was low)"), "{screen_text}");
+
+        // Nothing is saved until Esc and y, and then all at once.
+        assert_eq!(task(&app, 1).description, "Buy milk");
+        save(&mut app);
+        assert_eq!(task(&app, 1).description, "Buy oat milk");
+        assert_eq!(task(&app, 1).priority, Priority::Medium);
+        assert!(app.expanded.is_none());
+
+        // Finishing without changes just closes; n discards changes.
+        press(&mut app, KeyCode::Char('e'));
+        press(&mut app, KeyCode::Esc);
+        assert!(matches!(app.mode, Mode::Normal) && app.expanded.is_none());
+        press(&mut app, KeyCode::Char('s'));
+        press(&mut app, KeyCode::Char('l'));
+        press(&mut app, KeyCode::Esc);
+        press(&mut app, KeyCode::Char('n'));
+        assert_eq!(task(&app, 1).status, Status::ToDo);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -217,10 +301,13 @@ mod tests {
         assert!(screen_text.contains("Task #1 · home"), "{screen_text}");
         assert!(screen_text.contains("Created"), "{screen_text}");
 
-        // Task keys act on the expanded task; j/k move the view along.
+        // Editing from the expanded view keeps it open afterwards; j/k
+        // then move the view along.
         press(&mut app, KeyCode::Char('s'));
-        press(&mut app, KeyCode::Char('y'));
+        press(&mut app, KeyCode::Char('l'));
+        save(&mut app);
         assert_eq!(task(&app, 1).status, Status::InProgress);
+        assert_eq!(app.expanded_task().unwrap().num, 1);
         press(&mut app, KeyCode::Char('j'));
         assert_eq!(app.expanded_task().unwrap().num, 2);
 

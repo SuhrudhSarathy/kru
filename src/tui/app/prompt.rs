@@ -1,7 +1,6 @@
 //! Text prompts: typing into them and acting on the submitted text.
 
-use kru::task::{Task, TaskEdit};
-use kru::utils::due;
+use kru::task::Task;
 
 use super::confirm::Op;
 use super::{Action, App, Focus, Mode, Result};
@@ -12,8 +11,6 @@ pub enum Prompt {
     AddBucket,
     RenameBucket,
     AddTask,
-    EditDescription,
-    EditDue,
     MoveTask,
 }
 
@@ -53,7 +50,7 @@ impl App {
     }
 
     /// Acts on submitted prompt text. Bucket changes and new tasks apply
-    /// immediately; changes to an existing task open a confirmation.
+    /// immediately; moving a task asks first.
     fn submit(&mut self, prompt: Prompt, text: &str) -> Result<()> {
         match prompt {
             Prompt::AddBucket => {
@@ -76,32 +73,6 @@ impl App {
                     self.select_task(id);
                     self.commit(format!("Added task to {bucket}"))?;
                 }
-            }
-            Prompt::EditDescription => {
-                let (id, label) = self.require_selected()?;
-                let description = text.trim().to_string();
-                if description.is_empty() {
-                    return Err(kru::Error::EmptyDescription.into());
-                }
-                let question = format!("Rename {label} to \"{description}\"?");
-                let edit = TaskEdit {
-                    description: Some(description),
-                    ..TaskEdit::default()
-                };
-                self.confirm_edit(id, question, edit);
-            }
-            Prompt::EditDue => {
-                let (id, label) = self.require_selected()?;
-                let due = due::parse(text)?;
-                let question = match due {
-                    Some(at) => format!("Set due of {label} to {}?", due::format(at)),
-                    None => format!("Clear the due date of {label}?"),
-                };
-                let edit = TaskEdit {
-                    due: Some(due),
-                    ..TaskEdit::default()
-                };
-                self.confirm_edit(id, question, edit);
             }
             Prompt::MoveTask => {
                 let (id, label) = self.require_selected()?;

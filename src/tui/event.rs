@@ -43,6 +43,22 @@ pub fn action_for(key: KeyEvent, mode: &Mode) -> Option<Action> {
             KeyCode::Char(c) => Action::Input(c),
             _ => invalid(key),
         },
+        Mode::Edit(editor) if editor.typing.is_some() => match key.code {
+            KeyCode::Enter => Action::Submit,
+            KeyCode::Esc => Action::Cancel,
+            KeyCode::Backspace => Action::Backspace,
+            KeyCode::Char(c) => Action::Input(c),
+            _ => invalid(key),
+        },
+        Mode::Edit(_) => match key.code {
+            KeyCode::Char('k') | KeyCode::Up => Action::Up,
+            KeyCode::Char('j') | KeyCode::Down => Action::Down,
+            KeyCode::Char('h') | KeyCode::Left => Action::Left,
+            KeyCode::Char('l') | KeyCode::Right | KeyCode::Char(' ') => Action::Right,
+            KeyCode::Enter => Action::Submit,
+            KeyCode::Esc => Action::Cancel,
+            _ => invalid(key),
+        },
         // Only `y` confirms, so a stray Enter can never apply a change.
         Mode::Confirm(_) => match key.code {
             KeyCode::Enter => return None,

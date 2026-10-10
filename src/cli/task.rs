@@ -1,30 +1,16 @@
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
-use jiff::Timestamp;
 use kru::Store;
-use kru::task::{Priority, Status, Task, TaskEdit};
+use kru::task::{Priority, Status, Task};
 use uuid::Uuid;
 
-use super::output;
-
-const DUE_HELP: &str =
-    "Due date: 2026-10-12, \"2026-10-12 17:00\", today, tomorrow, fri, 3d, 2h (none clears it)";
+use super::{FieldInput, output};
 
 #[derive(Subcommand)]
 pub enum TaskCommand {
-    /// Add a task to a bucket (the bucket must exist)
+    /// Add a task to a bucket (the bucket must exist). Set its fields with
+    /// the flags below; a description is required.
     Add {
-        /// What needs doing
-        #[arg(short = 'd', long = "des", visible_alias = "description")]
-        description: String,
-
-        /// high, medium or low
-        #[arg(short, long, default_value_t = Priority::Low)]
-        priority: Priority,
-
-        #[arg(long, help = DUE_HELP, value_parser = parse_due)]
-        due: Option<Due>,
-
         /// Bucket to add to [default: the active bucket]
         #[arg(short, long)]
         bucket: Option<String>,
@@ -37,26 +23,11 @@ pub enum TaskCommand {
     /// Show every detail of a task
     Show { num: usize },
 
-    /// Change a task's status, priority, due date or description
+    /// Change a task's fields with the flags below
     #[command(visible_alias = "edit")]
     Mark {
         /// Task number, as shown by `kru task list`
         num: usize,
-
-        /// todo, in-progress or done
-        #[arg(short, long)]
-        status: Option<Status>,
-
-        /// high, medium or low
-        #[arg(short, long)]
-        priority: Option<Priority>,
-
-        #[arg(long, help = DUE_HELP, value_parser = parse_due)]
-        due: Option<Due>,
-
-        /// New description
-        #[arg(short = 'd', long = "des", visible_alias = "description")]
-        description: Option<String>,
     },
 
     /// Mark one or more tasks as done
@@ -106,27 +77,14 @@ pub struct ListArgs {
     all: bool,
 }
 
-/// A parsed `--due` value; `Due(None)` means "no due date".
-#[derive(Clone)]
-pub struct Due(Option<Timestamp>);
-
-/// clap value parser for `--due`.
-fn parse_due(input: &str) -> kru::Result<Due> {
-    kru::utils::due::parse(input).map(Due)
-}
-
-/// Runs a `kru task …` command.
-pub fn run(command: TaskCommand, store: &mut Store) -> Result<()> {
+/// Runs a `kru task …` command. `fields` are the field flags given to
+/// `add` or `mark`.
+pub fn run(command: TaskCommand, store: &mut Store, fields: &[FieldInput]) -> Result<()> {
     match command {
-        TaskCommand::Add {
-            description,
-            priority,
-            due,
-            bucket,
-        } => {
-            let mut task = Task::new(description).with_priority(priority);
-            if let Some(Due(Some(due))) = due {
-                task = task.with_due(due);
+        TaskCommand::Add { bucket } => {
+            let mut task = Task::new("");
+            for (key, input) in fields {
+                task.set(key, input)?;
             }
             let id = store.add_task(bucket.as_deref(), task)?;
             store.save()?;
@@ -138,35 +96,27 @@ pub fn run(command: TaskCommand, store: &mut Store) -> Result<()> {
 
         TaskCommand::Show { num } => output::print_task_details(&store.entry(num)?),
 
-        TaskCommand::Mark {
-            num,
-            status,
-            priority,
-            due,
-            description,
-        } => {
-            let edit = TaskEdit {
-                description,
-                priority,
-                status,
-                due: due.map(|Due(due)| due),
-            };
-            if edit.is_empty() {
-                bail!("nothing to change; pass --status, --priority, --due or --des");
+        TaskCommand::Mark { num } => {
+            if fields.is_empty() {
+                bail!(
+                    "nothing to change; pass any of {}",
+                    super::fields::flag_list()
+                );
             }
             let id = store.id_of(num)?;
-            store.edit_task(id, edit)?;
+            let changes = store.edit_task(id, fields)?;
             store.save()?;
-            output::print_tasks(&[store.find(id)?]);
+            if changes.is_empty() {
+                println!("#{num}: nothing changed.");
+            }
+            for change in changes {
+                println!("#{num} {change}");
+            }
         }
 
         TaskCommand::Done { nums } => {
-            let done = TaskEdit {
-                status: Some(Status::Done),
-                ..TaskEdit::default()
-            };
             for (num, id) in resolve(store, nums)? {
-                store.edit_task(id, done.clone())?;
+                store.edit_task(id, &[("status", "done")])?;
                 println!("Done #{num} {}", store.find(id)?.task.description);
             }
             store.save()?;

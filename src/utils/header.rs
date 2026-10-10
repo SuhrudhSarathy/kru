@@ -26,3 +26,9 @@ impl Header {
         self
     }
 }
+
+impl Default for Header {
+    fn default() -> Self {
+        Self::new()
+    }
+}

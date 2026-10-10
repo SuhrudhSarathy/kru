@@ -29,6 +29,10 @@ macro_rules! task_keys {
 fn key_hints(app: &App) -> &'static str {
     match (&app.mode, app.focus) {
         (Mode::Input { .. }, _) => "enter save · esc cancel",
+        (Mode::Edit(editor), _) if editor.typing.is_some() => "enter keep · esc undo typing",
+        (Mode::Edit(_), _) => {
+            "j/k field · h/l or space change option · enter type text · esc finish"
+        }
         (Mode::Confirm(_), _) => "y confirm · n/esc cancel",
         (Mode::Normal, _) if app.expanded.is_some() => concat!(
             "x/esc close · j/k next task · space done/reopen · ",

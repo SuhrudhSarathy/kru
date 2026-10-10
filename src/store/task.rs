@@ -1,8 +1,9 @@
 use uuid::Uuid;
 
 use super::{Entry, Store};
-use crate::task::{Task, TaskEdit};
+use crate::task::{Change, Task};
 use crate::utils::error::{Error, Result};
+use crate::utils::sanitize;
 
 impl Store {
     /// All tasks with their numbers. See [`Entry`] for the ordering.
@@ -39,11 +40,10 @@ impl Store {
     }
 
     /// Adds a task to the named bucket, or to the active bucket if `None`.
-    /// Fails if the bucket does not exist.
-    pub fn add_task(&mut self, bucket: Option<&str>, task: Task) -> Result<Uuid> {
-        if task.description.trim().is_empty() {
-            return Err(Error::EmptyDescription);
-        }
+    /// Fails if the bucket does not exist or the description is empty once
+    /// cleaned.
+    pub fn add_task(&mut self, bucket: Option<&str>, mut task: Task) -> Result<Uuid> {
+        task.description = sanitize::text(&task.description, "description")?;
         let bucket_id = match bucket {
             Some(name) => self.bucket_id(name)?,
             None => self.state.active.ok_or(Error::NoActiveBucket)?,
@@ -52,17 +52,49 @@ impl Store {
         Ok(bucket.add(task))
     }
 
-    /// Applies a partial edit to a task. Rejects an empty description.
-    pub fn edit_task(&mut self, id: Uuid, edit: TaskEdit) -> Result<()> {
-        if edit
-            .description
-            .as_deref()
-            .is_some_and(|d| d.trim().is_empty())
-        {
-            return Err(Error::EmptyDescription);
+    /// Edits a task's fields from user input, given as `(field key, input)`
+    /// pairs such as `("due", "fri")` (see [`Task::set`]).
+    ///
+    /// All or nothing: if any input is invalid, nothing changes. Returns the
+    /// fields that actually changed; if none did, the task is left alone
+    /// (its edited time included).
+    pub fn edit_task<K, V>(&mut self, id: Uuid, edits: &[(K, V)]) -> Result<Vec<Change>>
+    where
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        let (mut edited, changes) = self.edited(id, edits)?;
+        if !changes.is_empty() {
+            edited.header = edited.header.update_edited();
+            *self.task_mut(id)? = edited;
         }
-        self.task_mut(id)?.apply(edit);
-        Ok(())
+        Ok(changes)
+    }
+
+    /// What [`Store::edit_task`] would change, without changing anything.
+    /// Fails the same way on invalid input.
+    pub fn preview_edit<K, V>(&self, id: Uuid, edits: &[(K, V)]) -> Result<Vec<Change>>
+    where
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        Ok(self.edited(id, edits)?.1)
+    }
+
+    /// A copy of the task with `edits` applied, and what changed.
+    fn edited<K, V>(&self, id: Uuid, edits: &[(K, V)]) -> Result<(Task, Vec<Change>)>
+    where
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        let original = self.find(id)?.task;
+        let mut edited = original.clone();
+        for (key, input) in edits {
+            edited.set(key.as_ref(), input.as_ref())?;
+        }
+        let keys: Vec<&str> = edits.iter().map(|(key, _)| key.as_ref()).collect();
+        let changes = edited.changes_from(original, &keys);
+        Ok((edited, changes))
     }
 
     /// Moves a task into another bucket. This renumbers tasks.
@@ -104,7 +136,7 @@ impl Store {
 mod tests {
     use super::*;
     use crate::store::test_util::TempDir;
-    use crate::task::{Priority, Status};
+    use crate::task::Priority;
 
     #[test]
     fn tasks_need_an_existing_bucket() {
@@ -159,16 +191,10 @@ mod tests {
         store.add_bucket("work").unwrap();
         let id = store.add_task(None, Task::new("a")).unwrap();
 
-        store
-            .edit_task(
-                id,
-                TaskEdit {
-                    priority: Some(Priority::High),
-                    status: Some(Status::Done),
-                    ..TaskEdit::default()
-                },
-            )
+        let changes = store
+            .edit_task(id, &[("priority", "high"), ("status", "done")])
             .unwrap();
+        assert_eq!(changes.len(), 2);
         let task = store.find(id).unwrap().task;
         assert_eq!(task.priority, Priority::High);
         assert!(task.time_completed.is_some());
@@ -178,5 +204,39 @@ mod tests {
 
         store.remove_task(id).unwrap();
         assert!(store.find(id).is_err());
+    }
+
+    #[test]
+    fn edits_are_all_or_nothing_and_skip_no_ops() {
+        let dir = TempDir::new();
+        let mut store = Store::open(&dir.0).unwrap();
+        store.add_bucket("home").unwrap();
+        let id = store.add_task(None, Task::new("  water\tplants ")).unwrap();
+        assert_eq!(store.find(id).unwrap().task.description, "water plants");
+
+        // A bad input anywhere means nothing changes.
+        let result = store.edit_task(id, &[("priority", "high"), ("due", "someday")]);
+        assert!(matches!(result, Err(Error::InvalidDue(_))));
+        assert_eq!(store.find(id).unwrap().task.priority, Priority::Low);
+
+        // Setting a value it already has changes nothing, not even the edited time.
+        let edited = store.find(id).unwrap().task.header.time_last_edited;
+        assert!(
+            store
+                .edit_task(id, &[("priority", "low")])
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(store.find(id).unwrap().task.header.time_last_edited, edited);
+
+        // A preview reports the change without making it.
+        let preview = store.preview_edit(id, &[("priority", "h")]).unwrap();
+        assert_eq!(preview[0].to_string(), "priority: low → high");
+        assert_eq!(store.find(id).unwrap().task.priority, Priority::Low);
+
+        assert!(matches!(
+            store.add_task(None, Task::new(" \n ")),
+            Err(Error::EmptyField("description"))
+        ));
     }
 }

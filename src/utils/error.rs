@@ -11,9 +11,6 @@ pub enum Error {
     #[error("bucket `{0}` already exists")]
     BucketExists(String),
 
-    #[error("bucket name cannot be empty")]
-    EmptyBucketName,
-
     #[error("bucket `{name}` still has {open} open task(s)")]
     BucketNotEmpty { name: String, open: usize },
 
@@ -26,8 +23,21 @@ pub enum Error {
     #[error("task {0} not found")]
     TaskNotFound(Uuid),
 
-    #[error("task description cannot be empty")]
-    EmptyDescription,
+    #[error("{0} cannot be empty")]
+    EmptyField(&'static str),
+
+    #[error("{field} is too long ({len} characters, at most {max})")]
+    TooLong {
+        field: &'static str,
+        len: usize,
+        max: usize,
+    },
+
+    #[error("no field `{0}`")]
+    UnknownField(String),
+
+    #[error("{0} can't be edited")]
+    ReadOnlyField(&'static str),
 
     #[error("invalid priority `{0}` (expected high, medium or low)")]
     InvalidPriority(String),

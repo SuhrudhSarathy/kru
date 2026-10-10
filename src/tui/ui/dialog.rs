@@ -77,8 +77,6 @@ fn prompt_title(app: &App, prompt: Prompt) -> String {
             Some(bucket) => format!("New task in {}", bucket.name),
             None => "New task".to_string(),
         },
-        Prompt::EditDescription => "Description".to_string(),
-        Prompt::EditDue => "Due: 2026-10-12, \"… 17:00\", tomorrow, fri, 3d, none".to_string(),
         Prompt::MoveTask => {
             let names: Vec<_> = app.store.buckets().map(|b| b.name.as_str()).collect();
             format!("Move to bucket ({})", names.join(", "))

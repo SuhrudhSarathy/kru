@@ -2,13 +2,16 @@
 //! [`kru::Store`]; no task or bucket logic lives here.
 
 mod bucket;
+mod fields;
 mod output;
 mod task;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{ArgMatches, CommandFactory, FromArgMatches, Parser, Subcommand};
 use jiff::SignedDuration;
 use kru::Store;
+
+pub use fields::FieldInput;
 
 #[derive(Parser)]
 #[command(name = "kru", version, about = "Tasks, organised in buckets")]
@@ -39,9 +42,28 @@ pub enum Command {
 }
 
 /// Runs a parsed command against the store.
-pub fn run(command: Command, store: &mut Store) -> Result<()> {
+/// Parses the command line: the command, plus any task field flags
+/// (`--priority high`, …) given to `task add` or `task mark`.
+pub fn parse() -> (Cli, Vec<FieldInput>) {
+    let command = Cli::command().mut_subcommand("task", |task| {
+        task.mut_subcommand("add", fields::add_flags)
+            .mut_subcommand("mark", fields::add_flags)
+    });
+    let matches = command.get_matches();
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|err| err.exit());
+    let inputs = matches
+        .subcommand_matches("task")
+        .and_then(ArgMatches::subcommand)
+        .map(|(_, matches)| fields::given(matches))
+        .unwrap_or_default();
+    (cli, inputs)
+}
+
+/// Runs a parsed command against the store. `fields` are the task field
+/// flags from [`parse`].
+pub fn run(command: Command, store: &mut Store, fields: &[FieldInput]) -> Result<()> {
     match command {
-        Command::Task(command) => task::run(command, store),
+        Command::Task(command) => task::run(command, store, fields),
         Command::Bucket(command) => bucket::run(command, store),
         Command::Prune { days } => {
             let pruned = store.prune(SignedDuration::from_hours(i64::from(days) * 24));

@@ -2,7 +2,7 @@
 //!
 //! - `buckets`, `tasks`: the panes
 //! - `footer`: message and key hints
-//! - `expanded`: the blown-up view of one task
+//! - `expanded`: the blown-up view of one task, and editing it
 //! - `dialog`: text prompts and confirmations
 //! - `style`, `wrap`: shared helpers
 
@@ -37,10 +37,10 @@ pub fn render(frame: &mut Frame, app: &App) {
     footer::render(frame, app, footer);
 
     if let Some(entry) = app.expanded_task() {
-        expanded::render(frame, &entry);
+        expanded::render(frame, app, &entry);
     }
     match &app.mode {
-        Mode::Normal => {}
+        Mode::Normal | Mode::Edit(_) => {}
         Mode::Input { prompt, buffer } => dialog::render_input(frame, app, *prompt, buffer),
         Mode::Confirm(pending) => dialog::render_confirm(frame, pending),
     }

@@ -1,8 +1,6 @@
 //! Actions while no prompt or confirmation is open: navigation, bucket
 //! actions and task actions.
 
-use kru::task::{Priority, Status, TaskEdit};
-
 use super::confirm::Op;
 use super::{Action, App, Focus, Prompt, Result};
 
@@ -44,7 +42,12 @@ impl App {
             | Action::MoveTask => self.on_task(action)?,
 
             Action::InvalidKey(key) => self.error(format!("`{key}` does nothing here")),
-            Action::Input(_) | Action::Backspace | Action::Submit | Action::Cancel => {}
+            Action::Input(_)
+            | Action::Backspace
+            | Action::Submit
+            | Action::Cancel
+            | Action::Left
+            | Action::Right => {}
         }
         Ok(())
     }
@@ -103,64 +106,36 @@ impl App {
     }
 
     /// Actions on the target task (or adding one to the selected bucket).
-    /// Everything except priority asks for confirmation first.
+    /// Field changes go through the generic editor in `edit`; the keys
+    /// below are shortcuts to particular fields.
     fn on_task(&mut self, action: Action) -> Result<()> {
-        if action == Action::Add {
-            if self.selected_bucket().is_none() {
-                self.error("Create a bucket first: press h, then a");
-            } else {
-                self.prompt(Prompt::AddTask, String::new());
-            }
-            return Ok(());
-        }
-
-        let task = self.require_task()?;
-        let (status, priority, description) =
-            (task.status, task.priority, task.description.clone());
-        let (id, label) = self.require_selected()?;
         match action {
-            Action::Edit => self.prompt(Prompt::EditDescription, description),
-            Action::EditDue => self.prompt(Prompt::EditDue, String::new()),
-            Action::MoveTask => self.prompt(Prompt::MoveTask, String::new()),
-            Action::Remove => self.confirm(format!("Remove {label}?"), Op::RemoveTask { id }),
+            Action::Add if self.selected_bucket().is_none() => {
+                self.error("Create a bucket first: press h, then a")
+            }
+            Action::Add => self.prompt(Prompt::AddTask, String::new()),
+            Action::Edit => self.open_editor(None, false)?,
+            Action::EditDue => self.open_editor(Some("due"), true)?,
+            Action::CycleStatus => self.open_editor(Some("status"), false)?,
+            Action::CyclePriority => self.cycle_field("priority")?,
             Action::ToggleDone => {
-                let (to, question) = match status {
-                    Status::Done => (Status::ToDo, format!("Reopen {label}?")),
-                    _ => (Status::Done, format!("Mark {label} as done?")),
+                let to = if self.require_task()?.is_done() {
+                    "todo"
+                } else {
+                    "done"
                 };
-                self.confirm_edit(id, question, status_edit(to));
+                self.request_edit("status", to)?;
             }
-            Action::CycleStatus => {
-                let to = next(&Status::ALL, status);
-                let question = format!("Change status of {label}: {status} → {to}?");
-                self.confirm_edit(id, question, status_edit(to));
+            Action::MoveTask => {
+                self.require_task()?;
+                self.prompt(Prompt::MoveTask, String::new());
             }
-            // Applied without confirmation: pressing `p` again moves on.
-            Action::CyclePriority => {
-                let to = next(&Priority::ALL, priority);
-                let edit = TaskEdit {
-                    priority: Some(to),
-                    ..TaskEdit::default()
-                };
-                self.store.edit_task(id, edit)?;
-                self.select_task(id);
-                self.commit(format!("Priority of {label}: {priority} → {to}"))?;
+            Action::Remove => {
+                let (id, label) = self.require_selected()?;
+                self.confirm(format!("Remove {label}?"), Op::RemoveTask { id });
             }
             _ => {}
         }
         Ok(())
     }
-}
-
-fn status_edit(status: Status) -> TaskEdit {
-    TaskEdit {
-        status: Some(status),
-        ..TaskEdit::default()
-    }
-}
-
-/// The value after `current` in `all`, wrapping around.
-fn next<T: Copy + PartialEq>(all: &[T], current: T) -> T {
-    let index = all.iter().position(|&v| v == current).unwrap_or(0);
-    all[(index + 1) % all.len()]
 }

@@ -1,33 +1,38 @@
 //! Terminal output for the CLI.
+//!
+//! Task columns and details come from the tasks' own fields
+//! ([`kru::task::Task::fields`]), so a new field shows up here without
+//! changes.
 
 use comfy_table::{Attribute, Cell, ContentArrangement, Table, presets};
 use jiff::Timestamp;
-use jiff::tz::TimeZone;
+use kru::task::{Field, Tone, field};
 use kru::{Entry, Store};
 
 use crate::theme;
 
-/// Prints tasks as a table; done tasks are dimmed, overdue dates red.
+/// Prints tasks as a table: number, bucket, every listed field, then the
+/// description. Done tasks are dimmed.
 pub fn print_tasks(entries: &[Entry]) {
-    let now = Timestamp::now();
-    let mut table = new_table(["#", "Bucket", "Priority", "Status", "Due", "Description"]);
+    let fields: Vec<Vec<Field>> = entries.iter().map(|e| e.task.fields()).collect();
+    let columns = field::list_columns(&fields);
 
-    for entry in entries {
-        let task = entry.task;
-        let due = Cell::new(task.due.map(kru::utils::due::format).unwrap_or_default());
+    let mut header = vec!["#", "Bucket"];
+    header.extend(columns.iter().map(|&i| fields[0][i].label));
+    header.push("Description");
+    let mut table = new_table(&header);
+
+    for (entry, fields) in entries.iter().zip(&fields) {
         let mut row = vec![
             Cell::new(entry.num).fg(theme::NUMBER.into()),
             Cell::new(&entry.bucket.name),
-            Cell::new(task.priority).fg(theme::priority(task.priority).into()),
-            Cell::new(task.status).fg(theme::status(task.status).into()),
-            if task.is_overdue(now) {
-                due.fg(theme::OVERDUE.into())
-            } else {
-                due
-            },
-            Cell::new(&task.description),
         ];
-        if task.is_done() {
+        row.extend(columns.iter().map(|&i| {
+            let field = &fields[i];
+            toned(Cell::new(field.value.short()), field.tone)
+        }));
+        row.push(Cell::new(&entry.task.description));
+        if entry.task.is_done() {
             row = row
                 .into_iter()
                 .map(|cell| cell.add_attribute(Attribute::Dim))
@@ -38,37 +43,30 @@ pub fn print_tasks(entries: &[Entry]) {
     println!("{table}");
 }
 
-/// Prints every field of one task.
+/// Prints the description, the bucket and every detail field of one task.
 pub fn print_task_details(entry: &Entry) {
-    let task = entry.task;
-    println!("#{}  {}", entry.num, task.description);
-    let mut rows = vec![
-        ("bucket", entry.bucket.name.clone()),
-        ("priority", task.priority.to_string()),
-        ("status", task.status.to_string()),
-        (
-            "due",
-            task.due
-                .map(kru::utils::due::format)
-                .unwrap_or_else(|| "-".into()),
-        ),
-        ("created", local_time(task.header.time_created)),
-        ("edited", local_time(task.header.time_last_edited)),
-    ];
-    if let Some(completed) = task.time_completed {
-        rows.push(("completed", local_time(completed)));
-    }
-    rows.push(("id", task.header.id.to_string()));
+    let now = Timestamp::now();
+    println!("#{}  {}", entry.num, entry.task.description);
 
+    let bucket = ("Bucket", entry.bucket.name.clone());
+    let fields = entry
+        .task
+        .fields()
+        .into_iter()
+        .filter(|field| field.in_detail)
+        .map(|field| (field.label, field.value.long(now)));
+    let rows: Vec<_> = std::iter::once(bucket).chain(fields).collect();
+
+    let width = rows.iter().map(|(label, _)| label.len()).max().unwrap_or(0);
     for (label, value) in rows {
-        println!("  {label:<10} {value}");
+        println!("  {label:<width$}  {value}");
     }
 }
 
 /// Prints buckets with open/done counts; `*` marks the active one.
 pub fn print_buckets(store: &Store) {
     let active = store.active_bucket().map(|b| b.header.id);
-    let mut table = new_table(["", "Bucket", "Open", "Done"]);
+    let mut table = new_table(&["", "Bucket", "Open", "Done"]);
     for bucket in store.buckets() {
         let is_active = active == Some(bucket.header.id);
         let open = bucket.open_count();
@@ -83,18 +81,23 @@ pub fn print_buckets(store: &Store) {
 }
 
 /// A borderless table with a bold header row.
-fn new_table<const N: usize>(header: [&str; N]) -> Table {
+fn new_table(header: &[&str]) -> Table {
+    let header: Vec<Cell> = header
+        .iter()
+        .map(|h| Cell::new(h).add_attribute(Attribute::Bold))
+        .collect();
     let mut table = Table::new();
     table
         .load_style(presets::NOTHING)
         .set_content_arrangement(ContentArrangement::Dynamic)
-        .set_header(header.map(|h| Cell::new(h).add_attribute(Attribute::Bold)));
+        .set_header(header);
     table
 }
 
-/// Formats a timestamp in the local time zone.
-fn local_time(ts: Timestamp) -> String {
-    ts.to_zoned(TimeZone::system())
-        .strftime("%Y-%m-%d %H:%M")
-        .to_string()
+/// Colours a cell for what its field's value means.
+fn toned(cell: Cell, tone: Tone) -> Cell {
+    match theme::tone(tone) {
+        Some(colour) => cell.fg(colour.into()),
+        None => cell,
+    }
 }

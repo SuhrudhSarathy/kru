@@ -40,6 +40,13 @@ pub fn parse_at(input: &str, now: &Zoned) -> Result<Option<Timestamp>> {
         "tomorrow" => return end_of(now.date().tomorrow().map_err(|_| invalid())?),
         _ => {}
     }
+    // Accept what `format` prints, e.g. `Sat 2026-10-10 16:26`.
+    if let Some((first, rest)) = s.split_once(' ')
+        && parse_weekday(first).is_some()
+        && rest.starts_with(|c: char| c.is_ascii_digit())
+    {
+        return parse_at(rest, now);
+    }
     if let Some(weekday) = parse_weekday(&s) {
         return end_of(now.date().nth_weekday(1, weekday).map_err(|_| invalid())?);
     }
@@ -75,6 +82,25 @@ pub fn format(due: Timestamp) -> String {
         zoned.strftime("%a %Y-%m-%d").to_string()
     } else {
         zoned.strftime("%a %Y-%m-%d %H:%M").to_string()
+    }
+}
+
+/// How far `at` is from `now`, rounded to the nearest unit,
+/// e.g. `in 3 days` or `2 hours ago`.
+pub fn relative(at: Timestamp, now: Timestamp) -> String {
+    let secs = at.duration_since(now).as_secs();
+    let (unit, size) = match secs.unsigned_abs() {
+        s if s < 60 => return "just now".to_string(),
+        s if s < 3_570 => ("minute", 60),
+        s if s < 84_600 => ("hour", 3_600),
+        _ => ("day", 86_400),
+    };
+    let amount = (secs.unsigned_abs() + size / 2) / size;
+    let plural = if amount == 1 { "" } else { "s" };
+    if secs > 0 {
+        format!("in {amount} {unit}{plural}")
+    } else {
+        format!("{amount} {unit}{plural} ago")
     }
 }
 
@@ -131,6 +157,36 @@ mod tests {
         assert_eq!(parsed("+2h"), "2026-10-09 12:30");
         assert_eq!(parsed("1w"), "2026-10-16 10:30");
         assert_eq!(parsed("2 days"), "2026-10-11 10:30");
+    }
+
+    #[test]
+    fn relative_times() {
+        // `super::` because the `relative` test below shadows the function.
+        use jiff::SignedDuration;
+        let now = Timestamp::now();
+        let at = |hours: i64| now + SignedDuration::from_hours(hours);
+        assert_eq!(super::relative(now, now), "just now");
+        assert_eq!(super::relative(at(1), now), "in 1 hour");
+        assert_eq!(super::relative(at(-5), now), "5 hours ago");
+        assert_eq!(super::relative(at(72), now), "in 3 days");
+        assert_eq!(super::relative(at(-24), now), "1 day ago");
+        let almost_3_days = at(72) - SignedDuration::from_secs(1);
+        assert_eq!(super::relative(almost_3_days, now), "in 3 days");
+    }
+
+    #[test]
+    fn reads_back_what_format_prints() {
+        // `format` prints local time, so read it back in local time too.
+        let local_now = Zoned::now();
+        for at in ["2026-12-01 17:00", "2026-12-01"] {
+            let ts = parse_at(at, &local_now).unwrap().unwrap();
+            let printed = format(ts);
+            assert_eq!(
+                parse_at(&printed, &local_now).unwrap(),
+                Some(ts),
+                "{printed}"
+            );
+        }
     }
 
     #[test]

@@ -13,20 +13,18 @@ use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 
 use super::dialog::popup_area;
 use super::style;
-use super::wrap::wrap;
+use super::wrap::wrap_display;
+use crate::theme;
 
 pub(super) fn render(frame: &mut Frame, entry: &Entry) {
     let screen = frame.area();
     let width = (screen.width * 4 / 5).max(50).min(screen.width);
 
     // Wrap the description to the inner width (borders + padding = 4).
-    let mut description = wrap(
+    let description = wrap_display(
         &entry.task.description,
         usize::from(width.saturating_sub(4)).max(1),
     );
-    if description.len() > 1 && description.last().is_some_and(String::is_empty) {
-        description.pop();
-    }
     let details = details(entry);
 
     // Description, a separator line, then the fields; borders add 2.
@@ -55,8 +53,7 @@ pub(super) fn render(frame: &mut Frame, entry: &Entry) {
     };
     let lines: Vec<Line> = description
         .into_iter()
-        // `wrap` keeps a space that falls on a line break; drop it here.
-        .map(|line| Line::styled(line.trim_start().to_string(), title_style))
+        .map(|line| Line::styled(line, title_style))
         .collect();
     frame.render_widget(Paragraph::new(lines), description_area);
     frame.render_widget(
@@ -78,7 +75,7 @@ fn details(entry: &Entry) -> Vec<Line<'static>> {
         Some(at) => {
             let text = format!("{}  ({})", due::format(at), relative(at, now));
             if task.is_overdue(now) {
-                Span::raw(text).red()
+                Span::styled(text, style::fg(theme::OVERDUE))
             } else {
                 Span::raw(text)
             }

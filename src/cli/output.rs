@@ -1,10 +1,11 @@
 //! Terminal output for the CLI.
 
-use comfy_table::{Attribute, Cell, Color, ContentArrangement, Table, presets};
+use comfy_table::{Attribute, Cell, ContentArrangement, Table, presets};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
-use kru::task::{Priority, Status};
 use kru::{Entry, Store};
+
+use crate::theme;
 
 /// Prints tasks as a table; done tasks are dimmed, overdue dates red.
 pub fn print_tasks(entries: &[Entry]) {
@@ -15,12 +16,12 @@ pub fn print_tasks(entries: &[Entry]) {
         let task = entry.task;
         let due = Cell::new(task.due.map(kru::utils::due::format).unwrap_or_default());
         let mut row = vec![
-            Cell::new(entry.num).fg(Color::Cyan),
+            Cell::new(entry.num).fg(theme::NUMBER.into()),
             Cell::new(&entry.bucket.name),
-            priority_cell(task.priority),
-            status_cell(task.status),
+            Cell::new(task.priority).fg(theme::priority(task.priority).into()),
+            Cell::new(task.status).fg(theme::status(task.status).into()),
             if task.is_overdue(now) {
-                due.fg(Color::Red)
+                due.fg(theme::OVERDUE.into())
             } else {
                 due
             },
@@ -72,7 +73,7 @@ pub fn print_buckets(store: &Store) {
         let is_active = active == Some(bucket.header.id);
         let open = bucket.open_count();
         table.add_row(vec![
-            Cell::new(if is_active { "*" } else { "" }).fg(Color::Green),
+            Cell::new(if is_active { "*" } else { "" }).fg(theme::ACTIVE.into()),
             Cell::new(&bucket.name),
             Cell::new(open),
             Cell::new(bucket.len() - open),
@@ -89,26 +90,6 @@ fn new_table<const N: usize>(header: [&str; N]) -> Table {
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(header.map(|h| Cell::new(h).add_attribute(Attribute::Bold)));
     table
-}
-
-/// Priority coloured by importance.
-fn priority_cell(priority: Priority) -> Cell {
-    let cell = Cell::new(priority);
-    match priority {
-        Priority::High => cell.fg(Color::Red),
-        Priority::Medium => cell.fg(Color::Yellow),
-        Priority::Low => cell.fg(Color::Cyan),
-    }
-}
-
-/// Status coloured by progress.
-fn status_cell(status: Status) -> Cell {
-    let cell = Cell::new(status);
-    match status {
-        Status::ToDo => cell.fg(Color::Cyan),
-        Status::InProgress => cell.fg(Color::Magenta),
-        Status::Done => cell.fg(Color::Green),
-    }
 }
 
 /// Formats a timestamp in the local time zone.

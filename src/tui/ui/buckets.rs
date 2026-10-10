@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use super::style;
+use crate::theme;
 use crate::tui::app::{App, Focus};
 
 /// Buckets with their open-task counts; `*` marks the active one.
@@ -32,7 +33,7 @@ pub(super) fn render(frame: &mut Frame, app: &App, area: Rect) {
                 "  "
             };
             ListItem::new(Line::from(vec![
-                Span::raw(marker).green(),
+                Span::styled(marker, style::fg(theme::ACTIVE)),
                 Span::raw(bucket.name.as_str()),
                 Span::raw(format!(" ({})", bucket.open_count())).dark_gray(),
             ]))

@@ -1,4 +1,5 @@
 mod cli;
+mod theme;
 mod tui;
 
 use clap::Parser;

@@ -1,8 +1,11 @@
-//! Styles shared by the panes and overlays.
+//! Styles shared by the panes and overlays. Task colours come from
+//! [`crate::theme`], which the CLI uses too.
 
 use kru::task::{Priority, Status};
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::widgets::Block;
+
+use crate::theme::{self, Colour};
 
 /// A bordered block, highlighted when focused.
 pub(super) fn pane(title: &str, focused: bool) -> Block<'static> {
@@ -29,20 +32,17 @@ pub(super) fn highlight(focused: bool) -> Style {
     }
 }
 
+/// Text in a theme colour.
+pub(super) fn fg(colour: Colour) -> Style {
+    Style::new().fg(colour.into())
+}
+
 /// Colour for a priority.
 pub(super) fn priority(priority: Priority) -> Style {
-    match priority {
-        Priority::High => Style::new().fg(Color::Red),
-        Priority::Medium => Style::new().fg(Color::Yellow),
-        Priority::Low => Style::new(),
-    }
+    fg(theme::priority(priority))
 }
 
 /// Colour for a status.
 pub(super) fn status(status: Status) -> Style {
-    match status {
-        Status::ToDo => Style::new(),
-        Status::InProgress => Style::new().fg(Color::Blue),
-        Status::Done => Style::new().fg(Color::Green),
-    }
+    fg(theme::status(status))
 }

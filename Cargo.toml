@@ -2,6 +2,18 @@
 name = "kru"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+description = "Tasks, organised in buckets: a CLI and TUI task manager"
+repository = "https://github.com/SuhrudhSarathy/kru"
+readme = "README.md"
+keywords = ["tasks", "todo", "tui", "cli"]
+categories = ["command-line-utilities"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
 
 [dependencies]
 anyhow = "1.0.104"

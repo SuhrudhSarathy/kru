@@ -18,6 +18,9 @@ use crate::utils::error::{Error, Result};
 /// Environment variable that overrides the config file's path.
 pub const CONFIG_ENV: &str = "KRU_CONFIG";
 
+/// The editor used when none is configured: one every system has.
+const DEFAULT_EDITOR: &str = if cfg!(windows) { "notepad" } else { "vi" };
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     /// Where tasks are stored. `$KRU_DIR` takes precedence.
@@ -25,7 +28,8 @@ pub struct Config {
     pub dir: Option<PathBuf>,
 
     /// Command that opens a file for editing, e.g. `nvim` or `code --wait`.
-    /// Takes precedence over `$VISUAL` and `$EDITOR`.
+    /// Takes precedence over `$VISUAL` and `$EDITOR`; the default is `vi`
+    /// (`notepad` on Windows).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub editor: Option<String>,
 }
@@ -146,7 +150,7 @@ impl Config {
                         return Ok((editor, Source::Env(var)));
                     }
                 }
-                Ok(("vi".to_string(), Source::Default))
+                Ok((DEFAULT_EDITOR.to_string(), Source::Default))
             }
             _ => Err(unknown(key)),
         }
@@ -156,7 +160,7 @@ impl Config {
     pub fn editor(&self) -> String {
         self.effective("editor")
             .map(|(editor, _)| editor)
-            .unwrap_or_else(|_| "vi".to_string())
+            .unwrap_or_else(|_| DEFAULT_EDITOR.to_string())
     }
 }
 

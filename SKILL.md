@@ -33,7 +33,7 @@ agents (LLMs, scripts) driving it from a shell. Humans can read it too.
 ## Setup
 
 ```sh
-cargo install --path .        # from the repo; installs `kru` on PATH
+kru --version                 # installed? if not, see README.md
 kru path --json               # {"path": "..."}: where data is stored
 ```
 

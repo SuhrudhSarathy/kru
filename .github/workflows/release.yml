@@ -1,7 +1,8 @@
 name: Release
 
-# Push a tag like `v0.1.0` (matching the version in Cargo.toml) to build
-# kru for every platform and publish a GitHub release with the archives.
+# Push a tag like `v0.1.0` (matching the version in Cargo.toml), or publish
+# a release with that tag on GitHub, to build kru for every platform and
+# attach the archives to the release.
 # Running it by hand builds the archives without releasing them.
 on:
   push:
@@ -102,8 +103,15 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Create the GitHub release
+      # Works whether the release was drafted on GitHub first (publishing it
+      # creates the tag that started this run) or only the tag was pushed.
+      - name: Publish the archives
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "kru $GITHUB_REF_NAME" --generate-notes
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "kru $GITHUB_REF_NAME" --generate-notes
+          fi

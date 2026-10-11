@@ -2,11 +2,15 @@
 //! must be known; [`wrap_display`] is for showing text that isn't edited.
 
 /// Splits `text` into lines of at most `width` characters, breaking after
-/// the last space when possible. Always leaves room for the cursor: if the
-/// last line is full, an empty line follows it.
+/// the last space when possible and at every `\n`. Always leaves room for
+/// the cursor: if the last line is full, an empty line follows it.
 pub(super) fn wrap(text: &str, width: usize) -> Vec<String> {
     let mut lines = vec![String::new()];
     for c in text.chars() {
+        if c == '\n' {
+            lines.push(String::new());
+            continue;
+        }
         let line = lines.last_mut().expect("never empty");
         if line.chars().count() == width {
             // Carry the unfinished word over to the new line.
@@ -61,6 +65,15 @@ mod tests {
     fn wrap_splits_long_words() {
         assert_eq!(wrap("abcdefghijkl", 5), ["abcde", "fghij", "kl"]);
         assert_eq!(wrap("abcde", 5), ["abcde", ""]);
+    }
+
+    #[test]
+    fn wrap_breaks_at_newlines() {
+        assert_eq!(wrap("ab\ncd", 10), ["ab", "cd"]);
+        assert_eq!(
+            wrap_display("one two three\nfour", 7),
+            ["one two", "three", "four"]
+        );
     }
 
     #[test]

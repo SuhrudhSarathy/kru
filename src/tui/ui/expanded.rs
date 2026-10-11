@@ -41,7 +41,7 @@ fn inner_width(frame: &Frame) -> usize {
 /// Read-only: the description as a title, then the detail fields.
 fn render_view(frame: &mut Frame, entry: &Entry) {
     let description = wrap_display(&entry.task.description, inner_width(frame));
-    let details = details(entry);
+    let details = details(entry, inner_width(frame));
 
     // Description, a separator line, then the fields.
     let area = area(frame, description.len() + 1 + details.len());
@@ -81,7 +81,8 @@ fn render_view(frame: &mut Frame, entry: &Entry) {
 }
 
 /// One `label  value` line per detail field, after the bucket.
-fn details(entry: &Entry) -> Vec<Line<'static>> {
+/// Long values wrap within `width`, continuing under the value.
+fn details(entry: &Entry, width: usize) -> Vec<Line<'static>> {
     let now = Timestamp::now();
     let bucket = ("Bucket", entry.bucket.name.clone(), Tone::Neutral);
     let fields = entry
@@ -98,14 +99,18 @@ fn details(entry: &Entry) -> Vec<Line<'static>> {
         .max()
         .unwrap_or(0)
         + 2;
-    rows.into_iter()
-        .map(|(label, value, tone)| {
-            Line::from(vec![
+    let value_width = width.saturating_sub(label_width).max(10);
+    let mut lines = Vec::new();
+    for (label, value, tone) in rows {
+        for (i, text) in wrap_display(&value, value_width).into_iter().enumerate() {
+            let label = if i == 0 { label } else { "" };
+            lines.push(Line::from(vec![
                 Span::raw(format!("{label:<label_width$}")).dark_gray(),
-                Span::styled(value, style::tone(tone)),
-            ])
-        })
-        .collect()
+                Span::styled(text, style::tone(tone)),
+            ]));
+        }
+    }
+    lines
 }
 
 /// Edit mode: every editable or detail field as a row. The cursor row is

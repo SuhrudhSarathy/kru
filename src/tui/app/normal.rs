@@ -43,6 +43,7 @@ impl App {
 
             Action::InvalidKey(key) => self.error(format!("`{key}` does nothing here")),
             Action::Input(_)
+            | Action::Newline
             | Action::Backspace
             | Action::Submit
             | Action::Cancel

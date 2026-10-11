@@ -1,6 +1,6 @@
 ---
 name: kru
-description: Manage tasks and buckets with the `kru` CLI. Use when asked to add, list, find, update, complete, move or remove tasks, or to manage buckets. Always call kru with --json and parse the result.
+description: Manage tasks and buckets with the `kru` CLI. Use when asked to add, list, find, update, complete, move or remove tasks, record context or notes on a task, or manage buckets. Always call kru with --json and parse the result.
 ---
 
 # Using kru from an agent
@@ -23,6 +23,9 @@ agents (LLMs, scripts) driving it from a shell. Humans can read it too.
    bucket, so any `add`, `move` or `remove` can shift other tasks' numbers.
    `id` never changes. Take it from the JSON (`.id`) and pass it back as is.
 5. **Use `--all` to see done tasks.** `task list` hides them by default.
+6. **Add context, don't overwrite it.** Use `task ctx <task> -a <text>` to
+   record notes. Replacing context discards what was there, so it needs
+   `--force` (an agent can't answer the confirmation prompt).
 
 ## Setup
 
@@ -51,6 +54,7 @@ versions, so ignore keys you don't know.
   "num": 1,
   "bucket": "home",
   "description": "Pay rent",
+  "ctx": "Landlord: Sam\nPay by bank transfer",
   "priority": "high",
   "status": "todo",
   "due": "2026-10-12T11:30:00Z",
@@ -66,6 +70,7 @@ versions, so ignore keys you don't know.
 | `num` | integer | Position for people; can shift, see rule 4 |
 | `bucket` | string | Bucket name |
 | `description` | string | |
+| `ctx` | string | Extra context; may contain `\n`; `""` if none |
 | `priority` | `"low"` \| `"medium"` \| `"high"` | |
 | `status` | `"todo"` \| `"in-progress"` \| `"done"` | |
 | `due` | RFC 3339 UTC string or `null` | |
@@ -101,6 +106,9 @@ versions, so ignore keys you don't know.
 | `kru task show <task> --json` | task |
 | `kru task add -d <text> [field flags] [-b <bucket>] --json` | the new task |
 | `kru task mark <task> <field flags> --json` | `{"task": task, "changes": [change, …]}` |
+| `kru task ctx <task> --json` | task (read its `ctx`) |
+| `kru task ctx <task> -a <text> --json` | `{"task": task, "changes": [change, …]}`; adds `text` as a new line |
+| `kru task ctx <task> <text> --force --json` | same; replaces the whole context (`""` clears it) |
 | `kru task done <task>… --json` | array of the updated tasks |
 | `kru task move <task> -b <bucket> --json` | the task, with its new `num` |
 | `kru task remove <task>… --json` | array of the removed tasks, as they were |
@@ -120,6 +128,7 @@ Aliases: `task ls`, `task edit` (= `mark`), `task mv`, `task rm`,
 | Flag | Values |
 |---|---|
 | `-d`, `--description` | text (required for `add`) |
+| `-c`, `--ctx` | text, may contain newlines; replaces the context |
 | `-p`, `--priority` | `low`, `medium`, `high` (also `l`, `m`/`med`, `h`) |
 | `-s`, `--status` | `todo`, `in-progress`, `done` (also `doing`, `wip`) |
 | `--due` | `2026-10-12`, `"2026-10-12 17:00"`, `today`, `tomorrow`, `fri`/`friday`, `3d`, `2h`, `1w`, or `none` to clear |
@@ -149,9 +158,15 @@ date (no due date last), then higher priority.
 - **Edits are all-or-nothing.** If any flag in a `task mark` is invalid,
   nothing changes. Setting a value the task already has is a no-op:
   `changes` is `[]` and the task is not touched.
-- **Input is cleaned.** Text is trimmed, runs of whitespace and newlines
-  become one space, control characters are dropped. Empty text is rejected;
-  text over 500 characters is rejected.
+- **Input is cleaned.** Control characters are dropped and runs of spaces
+  become one. The description is a single line: newlines become spaces, it
+  can't be empty, and it's at most 500 characters. Context keeps its line
+  breaks (blank lines at the ends are dropped, runs of blank lines become
+  one), may be empty, and is at most 10,000 characters.
+- **Context replacement is guarded.** `task ctx <task> <text>` on a task
+  that already has context fails without `--force` when not run in a
+  terminal (or with `--json`). Appending (`-a`) never needs it. Note that
+  `task mark --ctx` replaces without asking, like any other field flag.
 - **Done tasks are pruned.** Tasks done more than 7 days ago are deleted
   automatically whenever kru starts.
 - **Removing a bucket with open tasks needs `--force`** and deletes its
@@ -187,6 +202,14 @@ kru task mark "$id" -p medium -s in-progress --due none --json | jq '.changes'
 kru task list --json | jq -r --arg now "$now" '.[] | select(.due != null and .due < $now) | .id' \
   | xargs -r kru task done --json
 
+# Record notes as you go; each -a adds a line.
+kru task ctx "$id" -a "Draft shared with Priya" --json
+kru task ctx "$id" -a "Numbers: https://example.com/q3" --json
+kru task show "$id" --json | jq -r '.ctx'
+
+# Replace the context entirely (agents must pass --force).
+kru task ctx "$id" "Final version sent" --force --json
+
 # Count open tasks per bucket.
 kru bucket list --json | jq 'map({(.name): .open}) | add'
 ```
@@ -208,6 +231,8 @@ date filters above work. The `date` fallback covers macOS (`-v`) and GNU
 | `Error: invalid due date \`x\` (try …)` | 1 | use a format from the table above |
 | `Error: bucket \`x\` still has N open task(s); use --force …` | 1 | move or finish the tasks, or pass `--force` |
 | `Error: nothing to change; pass any of …` | 1 | give `task mark` at least one field flag |
+| `Error: replacing the context needs confirmation; pass --force …` | 1 | use `-a` to add instead, or pass `--force` |
+| `Error: …: written by a newer kru (file format N; …)` | 1 | the data was written by a newer kru; upgrade kru, don't edit the files |
 | `error: invalid value 'x' for '--status …'` | 2 | bad argument; see `--help` |
 
 ## Example session

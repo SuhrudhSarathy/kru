@@ -87,6 +87,7 @@ mod tests {
                 "num",
                 "bucket",
                 "description",
+                "ctx",
                 "priority",
                 "status",
                 "due",

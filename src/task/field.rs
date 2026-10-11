@@ -71,9 +71,10 @@ impl Value {
     }
 
     /// Full form for detail views: times with how far away they are, `—`
-    /// if unset.
+    /// if unset or empty.
     pub fn long(&self, now: Timestamp) -> String {
         match self {
+            Value::Text(text) if text.is_empty() => "—".to_string(),
             Value::Time(Some(at)) => {
                 format!("{}  ({})", due::format(*at), due::relative(*at, now))
             }

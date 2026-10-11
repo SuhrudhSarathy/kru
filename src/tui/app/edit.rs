@@ -79,8 +79,23 @@ impl App {
 
     /// Keys while editing: j/k move between fields, h/l change a choice,
     /// Enter types into a text or time field, Esc finishes. While typing,
-    /// Enter keeps the text and Esc drops it.
+    /// Enter keeps the text, Alt+Enter adds a line break (text fields only;
+    /// single-line fields turn it into a space when saved) and Esc drops
+    /// the text.
     pub(super) fn on_edit(&mut self, action: Action) -> Result<()> {
+        if action == Action::Newline {
+            let field = self.cursor_field()?;
+            if !matches!(field.value, Value::Text(_)) {
+                return Err(UiError(format!("{} can't have line breaks", field.label)));
+            }
+            if let Mode::Edit(Editor {
+                typing: Some(text), ..
+            }) = &mut self.mode
+            {
+                text.push('\n');
+            }
+            return Ok(());
+        }
         let Mode::Edit(editor) = &mut self.mode else {
             return Ok(());
         };

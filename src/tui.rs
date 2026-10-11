@@ -242,7 +242,8 @@ mod tests {
         type_text(&mut app, "oat   milk");
 
         // Choices change in place with h/l; going back and forth is fine.
-        press(&mut app, KeyCode::Char('j'));
+        press(&mut app, KeyCode::Char('j')); // Context
+        press(&mut app, KeyCode::Char('j')); // Priority
         press(&mut app, KeyCode::Char('l'));
         press(&mut app, KeyCode::Char('l'));
         press(&mut app, KeyCode::Char('h'));
@@ -277,6 +278,59 @@ mod tests {
         press(&mut app, KeyCode::Esc);
         press(&mut app, KeyCode::Char('n'));
         assert_eq!(task(&app, 1).status, Status::ToDo);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn alt_enter_adds_line_breaks_while_typing() {
+        use ratatui::crossterm::event::KeyModifiers;
+        let alt_enter = |app: &mut App| {
+            let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT);
+            if let Some(action) = event::action_for(key, &app.mode) {
+                app.update(action);
+            }
+        };
+        let dir = std::env::temp_dir().join(format!("kru-tui-{}", uuid::Uuid::new_v4()));
+        let mut app = App::new(Store::open(&dir).unwrap());
+        app.update(Action::Add);
+        type_text(&mut app, "home");
+        app.update(Action::FocusTasks);
+        app.update(Action::Add);
+        type_text(&mut app, "Fix the sink");
+
+        // Context: Alt+Enter breaks the line, Enter keeps the text.
+        press(&mut app, KeyCode::Char('e'));
+        press(&mut app, KeyCode::Char('j')); // Context
+        press(&mut app, KeyCode::Enter);
+        for c in "Leak under the left tap".chars() {
+            app.update(Action::Input(c));
+        }
+        alt_enter(&mut app);
+        assert!(matches!(&app.mode, Mode::Edit(editor) if editor.typing.is_some()));
+        type_text(&mut app, "Plumber: 555-0100");
+        save(&mut app);
+        assert_eq!(
+            task(&app, 1).ctx,
+            "Leak under the left tap\nPlumber: 555-0100"
+        );
+
+        // Dates can't hold line breaks.
+        app.update(Action::EditDue);
+        alt_enter(&mut app);
+        let message = app.message.as_ref().unwrap();
+        assert!(message.is_error && message.text.contains("line breaks"));
+        app.update(Action::Cancel);
+        press(&mut app, KeyCode::Esc);
+
+        // In a prompt, Alt+Enter explains itself instead of submitting.
+        app.update(Action::Add);
+        for c in "Half".chars() {
+            app.update(Action::Input(c));
+        }
+        alt_enter(&mut app);
+        assert!(matches!(&app.mode, Mode::Input { buffer, .. } if buffer == "Half"));
+        assert!(app.message.as_ref().unwrap().is_error);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

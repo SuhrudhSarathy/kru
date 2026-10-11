@@ -119,10 +119,14 @@ impl FromStr for Status {
 pub struct Task {
     pub header: Header,
     pub description: String,
+    /// Extra context: notes, links, details. May span several lines.
+    pub ctx: String,
     pub priority: Priority,
     pub status: Status,
+
+    #[serde(default)]
     pub due: Option<Timestamp>,
-    /// When the task was marked done; used to prune old done tasks.
+
     #[serde(default)]
     pub time_completed: Option<Timestamp>,
 }
@@ -133,6 +137,7 @@ impl Task {
         Task {
             header: Header::new(),
             description: description.into(),
+            ctx: "".into(),
             priority: Priority::Low,
             status: Status::ToDo,
             due: None,
@@ -178,6 +183,7 @@ impl Task {
             "priority" => self.priority = input.parse()?,
             "status" => self.set_status(input.parse()?),
             "due" => self.due = due::parse(input)?,
+            "ctx" => self.ctx = sanitize::lines(input, "context")?,
             _ => {
                 return Err(match self.fields().into_iter().find(|f| f.key == key) {
                     Some(field) => Error::ReadOnlyField(field.label),
@@ -186,6 +192,15 @@ impl Task {
             }
         }
         Ok(())
+    }
+
+    /// The context with `text` added as a new last line.
+    pub fn ctx_with_line(&self, text: &str) -> String {
+        if self.ctx.is_empty() {
+            text.to_string()
+        } else {
+            format!("{}\n{text}", self.ctx)
+        }
     }
 
     /// The fields named in `keys` whose value differs between `before` and
@@ -235,6 +250,7 @@ impl Task {
             Field::text("description", "Description", &self.description)
                 .detailed(false)
                 .editable(),
+            Field::text("ctx", "Context", &self.ctx).editable(),
             Field::choice("priority", "Priority", self.priority)
                 .listed(true)
                 .instant(),

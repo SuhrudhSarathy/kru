@@ -43,6 +43,9 @@ impl App {
                     return Err(err);
                 }
             }
+            Action::Newline => {
+                self.error("Line breaks only work in a task's context: press e to edit it")
+            }
             Action::InvalidKey(key) => self.error(format!("`{key}` can't be used while typing")),
             _ => {}
         }

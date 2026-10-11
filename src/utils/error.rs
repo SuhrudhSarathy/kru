@@ -62,6 +62,16 @@ pub enum Error {
     #[error("{}: {source}", path.display())]
     Io { path: PathBuf, source: io::Error },
 
+    #[error(
+        "{}: written by a newer kru (file format {version}; this kru reads up to {supported}), upgrade kru",
+        path.display()
+    )]
+    NewerFormat {
+        path: PathBuf,
+        version: u64,
+        supported: u64,
+    },
+
     #[error("{}: {source}", path.display())]
     Json {
         path: PathBuf,

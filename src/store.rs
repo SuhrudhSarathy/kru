@@ -19,6 +19,7 @@
 
 mod bucket;
 mod io;
+mod migrate;
 mod task;
 
 use std::collections::BTreeMap;

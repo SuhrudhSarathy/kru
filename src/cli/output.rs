@@ -57,9 +57,13 @@ pub fn print_task_details(entry: &Entry) {
         .map(|field| (field.label, field.value.long(now)));
     let rows: Vec<_> = std::iter::once(bucket).chain(fields).collect();
 
+    // Multi-line values (like context) continue under the value.
     let width = rows.iter().map(|(label, _)| label.len()).max().unwrap_or(0);
     for (label, value) in rows {
-        println!("  {label:<width$}  {value}");
+        for (i, line) in value.lines().enumerate() {
+            let label = if i == 0 { label } else { "" };
+            println!("  {label:<width$}  {line}");
+        }
     }
 }
 

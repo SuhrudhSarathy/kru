@@ -1,3 +1,5 @@
+use std::io::{self, IsTerminal, Write};
+
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use kru::Store;
@@ -31,6 +33,24 @@ pub enum TaskCommand {
     Mark {
         #[arg(help = TASK_HELP)]
         task: String,
+    },
+
+    /// Show, add to or replace a task's context (extra notes)
+    Ctx {
+        #[arg(help = TASK_HELP)]
+        task: String,
+
+        /// New context, replacing all of the old (asks first unless --force)
+        #[arg(conflicts_with = "append")]
+        text: Option<String>,
+
+        /// Add this as a new line instead of replacing the context
+        #[arg(short, long)]
+        append: Option<String>,
+
+        /// Replace the context without asking
+        #[arg(short, long)]
+        force: bool,
     },
 
     /// Mark one or more tasks as done
@@ -141,6 +161,64 @@ pub fn run(
             }
             for change in changes {
                 println!("#{num} {change}");
+            }
+        }
+
+        TaskCommand::Ctx {
+            task,
+            text,
+            append,
+            force,
+        } => {
+            let id = store.resolve(&task)?;
+            let entry = store.find(id)?;
+            let (num, current) = (entry.num, entry.task.ctx.clone());
+            let input = match (append, text) {
+                (Some(line), _) => entry.task.ctx_with_line(&line),
+                (None, Some(text)) => {
+                    if !current.is_empty() && !force {
+                        if as_json || !io::stdin().is_terminal() {
+                            bail!(
+                                "replacing the context needs confirmation; pass --force to do it without asking"
+                            );
+                        }
+                        eprintln!("Context of #{num} now:");
+                        for line in current.lines() {
+                            eprintln!("  {line}");
+                        }
+                        if !ask("Replace it?")? {
+                            println!("Context of #{num} left as it was.");
+                            return Ok(());
+                        }
+                    }
+                    text
+                }
+                (None, None) => {
+                    if as_json {
+                        json::print(json::entry(&entry));
+                    } else if current.is_empty() {
+                        println!(
+                            "#{num} has no context. Add some with `kru task ctx {num} -a <text>`."
+                        );
+                    } else {
+                        println!("{current}");
+                    }
+                    return Ok(());
+                }
+            };
+
+            let changes = store.edit_task(id, &[("ctx", input)])?;
+            store.save()?;
+            let entry = store.find(id)?;
+            if as_json {
+                let changes: Vec<_> = changes.iter().map(json::change).collect();
+                json::print(serde_json::json!({ "task": json::entry(&entry), "changes": changes }));
+            } else if changes.is_empty() {
+                println!("#{num}: nothing changed.");
+            } else if entry.task.ctx.is_empty() {
+                println!("Cleared the context of #{}.", entry.num);
+            } else {
+                println!("Context of #{}:\n{}", entry.num, entry.task.ctx);
             }
         }
 
@@ -263,4 +341,14 @@ fn resolve(store: &Store, references: &[String]) -> Result<Vec<(usize, Uuid)>> {
     resolved.sort_unstable();
     resolved.dedup();
     Ok(resolved)
+}
+
+/// Asks `question` on the terminal; anything but y/yes means no. Only call
+/// it when stdin is a terminal, so scripts never hang waiting for an answer.
+fn ask(question: &str) -> Result<bool> {
+    eprint!("{question} [y/N] ");
+    io::stderr().flush()?;
+    let mut answer = String::new();
+    io::stdin().read_line(&mut answer)?;
+    Ok(matches!(answer.trim().to_lowercase().as_str(), "y" | "yes"))
 }

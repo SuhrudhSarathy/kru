@@ -71,6 +71,8 @@ pub enum Action {
     EditDue,
     MoveTask,
     Input(char),
+    /// Alt+Enter while typing: a line break, in text fields.
+    Newline,
     Backspace,
     Submit,
     Cancel,

@@ -37,6 +37,7 @@ pub fn action_for(key: KeyEvent, mode: &Mode) -> Option<Action> {
             _ => invalid(key),
         },
         Mode::Input { .. } => match key.code {
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => Action::Newline,
             KeyCode::Enter => Action::Submit,
             KeyCode::Esc => Action::Cancel,
             KeyCode::Backspace => Action::Backspace,
@@ -44,6 +45,7 @@ pub fn action_for(key: KeyEvent, mode: &Mode) -> Option<Action> {
             _ => invalid(key),
         },
         Mode::Edit(editor) if editor.typing.is_some() => match key.code {
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => Action::Newline,
             KeyCode::Enter => Action::Submit,
             KeyCode::Esc => Action::Cancel,
             KeyCode::Backspace => Action::Backspace,

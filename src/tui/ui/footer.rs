@@ -41,17 +41,17 @@ fn key_hints(app: &App) -> &'static str {
             task_keys!()
         ),
         (Mode::Normal, Focus::Buckets) => {
-            "j/k move · a add · e rename · r remove · u use · tab next pane · q quit"
+            "j/k move · a add · e rename · r remove · u use · tab next pane · S sync · q quit"
         }
         (Mode::Normal, Focus::Tasks) => concat!(
             "j/k move · x expand · a add · space done · ",
             task_keys!(),
-            " · tab next pane · q quit"
+            " · tab next pane · S sync · q quit"
         ),
         (Mode::Normal, Focus::Done) => concat!(
             "j/k move · x expand · space reopen · ",
             task_keys!(),
-            " · tab next pane · q quit"
+            " · tab next pane · S sync · q quit"
         ),
     }
 }

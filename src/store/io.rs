@@ -9,8 +9,9 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::migrate::{self, File};
-use super::{DONE_RETENTION, State, Store};
+use super::{DONE_RETENTION, State, Store, TOMBSTONE_RETENTION, Tombstones};
 use crate::bucket::Bucket;
+use crate::sync::{self, Snapshot};
 use crate::utils::error::{Error, Result};
 
 impl Store {
@@ -20,67 +21,79 @@ impl Store {
     }
 
     /// Loads the store from `dir`, creating it if needed, and prunes done
-    /// tasks older than [`DONE_RETENTION`].
+    /// tasks older than [`DONE_RETENTION`] (and old tombstones).
     pub fn open(dir: impl Into<PathBuf>) -> Result<Store> {
         let dir = dir.into();
-        let buckets_dir = dir.join("buckets");
-        fs::create_dir_all(&buckets_dir).map_err(io_error(&buckets_dir))?;
-
-        let mut buckets = BTreeMap::new();
-        for path in json_files(&buckets_dir)? {
-            let bucket: Bucket = read_versioned(&path, File::Bucket)?;
-            buckets.insert(bucket.header.id, bucket);
-        }
-
-        // Check for the state file. If it doesn't exist, get a default state.
-        let state_path = dir.join("state.json");
-        let mut state: State = if state_path.exists() {
-            read_versioned(&state_path, File::State)?
-        } else {
-            State::default()
+        let (snapshot, mut state) = {
+            let _lock = lock(&dir)?;
+            let state_path = dir.join("state.json");
+            let state: State = if state_path.exists() {
+                read_versioned(&state_path, File::State)?
+            } else {
+                State::default()
+            };
+            (load_snapshot(&dir)?, state)
         };
 
         // If the active bucket has somehow been deleted, reset it to none.
-        // let the user set it
-        if state.active.is_some_and(|id| !buckets.contains_key(&id)) {
+        if state
+            .active
+            .is_some_and(|id| !snapshot.buckets.contains_key(&id))
+        {
             state.active = None;
         }
 
-        // Create the store.
         let mut store = Store {
             dir,
-            buckets,
+            buckets: snapshot.buckets.clone(),
             state,
+            tombstones: snapshot.tombstones.clone(),
+            base: snapshot,
         };
 
-        // Prune the store based on retention.
-        if store.prune(DONE_RETENTION) > 0 {
+        let pruned = store.prune(DONE_RETENTION) > 0;
+        let expired = store.tombstones.expire(TOMBSTONE_RETENTION);
+        if pruned || expired {
             store.save()?;
         }
-
-        // All is good
         Ok(store)
     }
 
-    /// Writes every bucket and the state file, and deletes files of
-    /// buckets that no longer exist.
-    pub fn save(&self) -> Result<()> {
-        let buckets_dir = self.dir.join("buckets");
-        fs::create_dir_all(&buckets_dir).map_err(io_error(&buckets_dir))?;
+    /// Writes the store to disk. If another process (a CLI command, a sync,
+    /// another window) changed the files since this store was loaded, its
+    /// changes are merged in first (see [`crate::sync::merge`]) and this
+    /// store is updated to the merged result, so nobody's edits are lost.
+    pub fn save(&mut self) -> Result<()> {
+        let _lock = lock(&self.dir)?;
+        let on_disk = load_snapshot(&self.dir)?;
+        if on_disk != self.base {
+            let merged = sync::merge(&self.base, &self.snapshot(), &on_disk);
+            self.buckets = merged.snapshot.buckets;
+            self.tombstones = merged.snapshot.tombstones;
+            self.follow_redirects(&merged.redirects);
+        }
 
-        for bucket in self.buckets.values() {
-            write_json(&bucket_path(&buckets_dir, bucket.header.id), bucket)?;
+        let snapshot = self.snapshot();
+        write_snapshot(&self.dir, &snapshot)?;
+        write_json(&self.dir.join("state.json"), &self.state)?;
+        self.base = snapshot;
+        Ok(())
+    }
+
+    /// Points the active bucket at the bucket it was merged into, if any.
+    pub(crate) fn follow_redirects(&mut self, redirects: &BTreeMap<Uuid, Uuid>) {
+        if let Some(active) = self.state.active
+            && let Some(&survivor) = redirects.get(&active)
+        {
+            self.state.active = Some(survivor);
         }
-        for path in json_files(&buckets_dir)? {
-            let id = path
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .and_then(|stem| stem.parse::<Uuid>().ok());
-            if id.is_some_and(|id| !self.buckets.contains_key(&id)) {
-                fs::remove_file(&path).map_err(io_error(&path))?;
-            }
+        if self
+            .state
+            .active
+            .is_some_and(|id| !self.buckets.contains_key(&id))
+        {
+            self.state.active = None;
         }
-        write_json(&self.dir.join("state.json"), &self.state)
     }
 
     /// Deletes done tasks completed more than `retention` ago, with their
@@ -104,6 +117,70 @@ impl Store {
             let _ = self.remove_task(id);
         }
         expired.len()
+    }
+}
+
+/// Holds an exclusive lock on the store directory until dropped, so loads
+/// and saves from several processes don't interleave.
+pub(crate) fn lock(dir: &Path) -> Result<fs::File> {
+    fs::create_dir_all(dir).map_err(io_error(dir))?;
+    let path = dir.join(".lock");
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map_err(io_error(&path))?;
+    file.lock().map_err(io_error(&path))?;
+    Ok(file)
+}
+
+/// Reads the syncable part of the store in `dir` (buckets and tombstones).
+pub(crate) fn load_snapshot(dir: &Path) -> Result<Snapshot> {
+    let buckets_dir = dir.join("buckets");
+    fs::create_dir_all(&buckets_dir).map_err(io_error(&buckets_dir))?;
+    let mut buckets = BTreeMap::new();
+    for path in json_files(&buckets_dir)? {
+        let bucket: Bucket = read_versioned(&path, File::Bucket)?;
+        buckets.insert(bucket.header.id, bucket);
+    }
+    let stones_path = dir.join("tombstones.json");
+    let tombstones = if stones_path.exists() {
+        read_versioned(&stones_path, File::Tombstones)?
+    } else {
+        Tombstones::default()
+    };
+    Ok(Snapshot {
+        buckets,
+        tombstones,
+    })
+}
+
+/// Writes the syncable part of a store to `dir`: every bucket, the
+/// tombstones (if any), and removes files of buckets that no longer exist.
+pub(crate) fn write_snapshot(dir: &Path, snapshot: &Snapshot) -> Result<()> {
+    let buckets_dir = dir.join("buckets");
+    fs::create_dir_all(&buckets_dir).map_err(io_error(&buckets_dir))?;
+    for bucket in snapshot.buckets.values() {
+        write_json(&bucket_path(&buckets_dir, bucket.header.id), bucket)?;
+    }
+    for path in json_files(&buckets_dir)? {
+        let id = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .and_then(|stem| stem.parse::<Uuid>().ok());
+        if id.is_some_and(|id| !snapshot.buckets.contains_key(&id)) {
+            fs::remove_file(&path).map_err(io_error(&path))?;
+        }
+    }
+    let stones_path = dir.join("tombstones.json");
+    if snapshot.tombstones.is_empty() {
+        if stones_path.exists() {
+            fs::remove_file(&stones_path).map_err(io_error(&stones_path))?;
+        }
+        Ok(())
+    } else {
+        write_json(&stones_path, &snapshot.tombstones)
     }
 }
 
@@ -136,13 +213,28 @@ pub(super) fn json_files(dir: &Path) -> Result<Vec<PathBuf>> {
 /// [`migrate`]), and deserializes it. Before upgrading, the original is
 /// copied to `<file>.v<version>.bak`. Fails on files from a newer kru.
 fn read_versioned<T: DeserializeOwned>(path: &Path, kind: File) -> Result<T> {
+    let text = fs::read_to_string(path).map_err(io_error(path))?;
+    let (value, version) = parse_versioned(&text, path, kind)?;
+    let backup = path.with_extension(format!("json.v{version}.bak"));
+    if version < migrate::VERSION && !backup.exists() {
+        fs::copy(path, &backup).map_err(io_error(&backup))?;
+    }
+    Ok(value)
+}
+
+/// Parses the text of a store file (from disk or from git), upgrading it
+/// to the current format. Returns the value and the version it was written
+/// in. `path` names the file in errors. Fails on files from a newer kru.
+pub(crate) fn parse_versioned<T: DeserializeOwned>(
+    text: &str,
+    path: &Path,
+    kind: File,
+) -> Result<(T, u64)> {
     let json_error = |source| Error::Json {
         path: path.to_path_buf(),
         source,
     };
-    let text = fs::read_to_string(path).map_err(io_error(path))?;
-    let mut file: Value = serde_json::from_str(&text).map_err(json_error)?;
-
+    let mut file: Value = serde_json::from_str(text).map_err(json_error)?;
     let version = migrate::version(&file);
     if version > migrate::VERSION {
         return Err(Error::NewerFormat {
@@ -151,13 +243,31 @@ fn read_versioned<T: DeserializeOwned>(path: &Path, kind: File) -> Result<T> {
             supported: migrate::VERSION,
         });
     }
-    let backup = path.with_extension(format!("json.v{version}.bak"));
-    if version < migrate::VERSION && !backup.exists() {
-        fs::copy(path, &backup).map_err(io_error(&backup))?;
-    }
     migrate::upgrade(kind, &mut file, version);
+    let value = serde_json::from_value(file).map_err(json_error)?;
+    Ok((value, version))
+}
 
-    serde_json::from_value(file).map_err(json_error)
+/// After a sync, makes sure this device's active bucket exists: a bucket
+/// merged into another is followed to it (`redirects`), and a device with
+/// no active bucket (one that just joined) uses the oldest bucket.
+pub(crate) fn settle_active(dir: &Path, redirects: &BTreeMap<Uuid, Uuid>) -> Result<()> {
+    let path = dir.join("state.json");
+    let mut state: State = if path.exists() {
+        read_versioned(&path, File::State)?
+    } else {
+        State::default()
+    };
+    let buckets = load_snapshot(dir)?.buckets;
+    let mut active = state.active.map(|id| *redirects.get(&id).unwrap_or(&id));
+    if active.is_none_or(|id| !buckets.contains_key(&id)) {
+        active = buckets.keys().next().copied();
+    }
+    if active != state.active {
+        state.active = active;
+        write_json(&path, &state)?;
+    }
+    Ok(())
 }
 
 /// Writes a store file stamped with the current format version. Writes to
@@ -179,7 +289,7 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
 mod tests {
     use super::*;
     use crate::store::test_util::TempDir;
-    use crate::task::{Status, Task};
+    use crate::task::{Priority, Status, Task};
 
     #[test]
     fn prune_removes_only_old_done_tasks() {
@@ -239,7 +349,7 @@ mod tests {
         let path = buckets.join("01a129b5-bf8c-7764-9558-d591db369ce8.json");
         fs::write(&path, UNVERSIONED_BUCKET).unwrap();
 
-        let store = Store::open(&dir.0).unwrap();
+        let mut store = Store::open(&dir.0).unwrap();
         let task = store.entry(1).unwrap().task;
         assert_eq!(
             (task.description.as_str(), task.ctx.as_str()),
@@ -279,6 +389,65 @@ mod tests {
             Store::open(&dir.0),
             Err(Error::NewerFormat { version: 999, .. })
         ));
+    }
+
+    #[test]
+    fn saves_from_two_open_stores_keep_both_edits() {
+        let dir = TempDir::new();
+        let mut setup = Store::open(&dir.0).unwrap();
+        setup.add_bucket("home").unwrap();
+        let first = setup.add_task(None, Task::new("first")).unwrap();
+        let second = setup.add_task(None, Task::new("second")).unwrap();
+        setup.save().unwrap();
+
+        // Like a TUI and a CLI command, both opened before either saves.
+        let mut tui = Store::open(&dir.0).unwrap();
+        let mut cli = Store::open(&dir.0).unwrap();
+        tui.edit_task(first, &[("priority", "high")]).unwrap();
+        cli.edit_task(second, &[("description", "second, renamed")])
+            .unwrap();
+        let added = cli.add_task(None, Task::new("third")).unwrap();
+        cli.save().unwrap();
+        tui.save().unwrap();
+
+        // The second save merged in the first instead of overwriting it,
+        // and the saving store now holds the merged result too.
+        for store in [&tui, &Store::open(&dir.0).unwrap()] {
+            assert_eq!(store.find(first).unwrap().task.priority, Priority::High);
+            assert_eq!(
+                store.find(second).unwrap().task.description,
+                "second, renamed"
+            );
+            assert!(store.find(added).is_ok());
+        }
+    }
+
+    #[test]
+    fn deletes_leave_tombstones() {
+        let dir = TempDir::new();
+        let mut store = Store::open(&dir.0).unwrap();
+        store.add_bucket("home").unwrap();
+        store.add_bucket("work").unwrap();
+        let task = store.add_task(None, Task::new("a")).unwrap();
+        let in_work = store.add_task(Some("work"), Task::new("b")).unwrap();
+        store.remove_task(task).unwrap();
+        let work = store.bucket("work").unwrap().header.id;
+        store.remove_bucket("work", true).unwrap();
+        store.save().unwrap();
+
+        let stones = Store::open(&dir.0).unwrap().snapshot().tombstones;
+        assert!(stones.tasks.contains_key(&task));
+        assert!(
+            stones.tasks.contains_key(&in_work),
+            "a bucket's tasks go with it"
+        );
+        assert!(stones.buckets.contains_key(&work));
+
+        // A deleted task removed elsewhere stays deleted when this store saves.
+        let mut other = Store::open(&dir.0).unwrap();
+        other.add_task(None, Task::new("c")).unwrap();
+        other.save().unwrap();
+        assert!(Store::open(&dir.0).unwrap().find(task).is_err());
     }
 
     #[test]

@@ -74,6 +74,8 @@ pub enum Action {
     MoveTask,
     /// Open the task's markdown file in the editor, creating it if needed.
     OpenMd,
+    /// Sync with the other devices now.
+    Sync,
     Input(char),
     /// Alt+Enter while typing: a line break, in text fields.
     Newline,
@@ -100,6 +102,8 @@ pub struct App {
     /// A file to open in the editor; the event loop takes it, suspends the
     /// TUI while the editor runs, then calls [`App::editor_closed`].
     pub open_file: Option<PathBuf>,
+    /// Set by the sync key; the event loop syncs, then reloads the store.
+    pub sync_requested: bool,
     pub message: Option<Message>,
     pub should_quit: bool,
 }
@@ -125,6 +129,7 @@ impl App {
             mode: Mode::Normal,
             expanded: None,
             open_file: None,
+            sync_requested: false,
             message: None,
             should_quit: false,
         }
@@ -145,6 +150,27 @@ impl App {
             self.error(err);
         }
         self.clamp_selection();
+    }
+
+    /// Shows a message in the footer.
+    pub fn notify(&mut self, text: impl Into<String>, is_error: bool) {
+        if is_error {
+            self.error(text);
+        } else {
+            self.info(text);
+        }
+    }
+
+    /// Re-reads the store from disk (after a sync brought in changes),
+    /// keeping the selection as close as possible.
+    pub fn reload(&mut self) {
+        match Store::open(self.store.dir()) {
+            Ok(store) => {
+                self.store = store;
+                self.clamp_selection();
+            }
+            Err(err) => self.error(format!("Couldn't reload after syncing: {err}")),
+        }
     }
 
     /// Reports how editing [`App::open_file`] went.

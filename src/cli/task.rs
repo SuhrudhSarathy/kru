@@ -97,6 +97,13 @@ pub enum TaskCommand {
     },
 }
 
+impl TaskCommand {
+    /// Whether the command can change tasks (`md` may, through the editor).
+    pub fn changes_data(&self) -> bool {
+        !matches!(self, TaskCommand::List(_) | TaskCommand::Show { .. })
+    }
+}
+
 const TASK_HELP: &str = "Task number or id (or the start of an id), as shown by `kru task list`";
 const TASKS_HELP: &str = "Task numbers or ids (or the start of ids)";
 

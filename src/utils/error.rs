@@ -62,8 +62,27 @@ pub enum Error {
     #[error("could not determine a config directory")]
     NoConfigDir,
 
-    #[error("no config key `{0}` (expected dir or editor)")]
+    #[error("git isn't installed (or not on PATH); syncing needs it")]
+    GitMissing,
+
+    #[error("git {action} failed: {message}")]
+    Git { action: String, message: String },
+
+    #[error("sync isn't set up for this store; run `kru sync init <remote-url>`")]
+    SyncNotSetUp,
+
+    #[error("this store already syncs with {0}")]
+    SyncRemoteMismatch(String),
+
+    #[error("no config key `{0}` (expected dir, editor or autosync)")]
     UnknownConfigKey(String),
+
+    #[error("invalid value `{value}` for {key} (expected {expected})")]
+    InvalidConfigValue {
+        key: &'static str,
+        value: String,
+        expected: &'static str,
+    },
 
     #[error("{}: {source}", path.display())]
     Io { path: PathBuf, source: io::Error },

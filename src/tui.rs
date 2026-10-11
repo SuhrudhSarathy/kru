@@ -6,31 +6,74 @@ mod app;
 mod event;
 mod ui;
 
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
+use std::time::Duration;
+
 use anyhow::Result;
 use kru::Store;
 use kru::config::Config;
+use kru::sync::{self, Report};
 use ratatui::DefaultTerminal;
-use ratatui::crossterm::event::{Event, KeyEventKind, read};
+use ratatui::crossterm::event::{Event, KeyEventKind, poll, read};
 
 use app::App;
 
+/// How often the TUI syncs in the background when `autosync` is on.
+const AUTOSYNC_EVERY: Duration = Duration::from_secs(5 * 60);
+
+/// How long to wait for a key before checking on background work.
+const TICK: Duration = Duration::from_millis(250);
+
 /// Opens the TUI and blocks until the user quits.
 /// The terminal is restored even if the loop returns an error.
+///
+/// If the store syncs with other devices, it syncs when the TUI opens and
+/// when it closes, on `S`, and every few minutes with `autosync` on.
 pub fn run(store: Store) -> Result<()> {
-    let editor = Config::load()?.editor();
+    let config = Config::load()?;
+    let editor = config.editor();
+    let dir = store.dir().to_path_buf();
+    let syncs = sync::is_set_up(&dir);
+
+    let mut app = if syncs {
+        eprint!("Syncing… ");
+        let (message, failed) = describe(sync::run(&dir, false));
+        eprintln!("{message}");
+        let mut app = App::new(Store::open(&dir)?);
+        app.notify(message, failed);
+        app
+    } else {
+        App::new(store)
+    };
+    let background = (syncs && config.autosync()).then(|| autosync(dir.clone()));
+
     let mut terminal = ratatui::init();
-    let result = event_loop(&mut terminal, App::new(store), &editor);
+    let result = event_loop(&mut terminal, &mut app, &editor, &dir, background.as_ref());
     ratatui::restore();
+
+    if syncs {
+        eprint!("Syncing… ");
+        eprintln!("{}", describe(sync::run(&dir, false)).0);
+    }
     result
 }
 
-/// Draws, waits for a key, applies the matching action; repeats until quit.
-/// When the app asks for a file to be opened, hands the terminal to the
-/// editor and takes it back afterwards.
-fn event_loop(terminal: &mut DefaultTerminal, mut app: App, editor: &str) -> Result<()> {
+/// Draws, waits briefly for a key, applies the matching action; repeats
+/// until quit. In between, it hands the terminal to the editor when a file
+/// should be opened, and syncs when asked or when a background sync is done.
+fn event_loop(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    editor: &str,
+    dir: &Path,
+    background: Option<&Receiver<kru::Result<Report>>>,
+) -> Result<()> {
     while !app.should_quit {
-        terminal.draw(|frame| ui::render(frame, &app))?;
-        if let Event::Key(key) = read()?
+        terminal.draw(|frame| ui::render(frame, app))?;
+        if poll(TICK)?
+            && let Event::Key(key) = read()?
             && key.kind == KeyEventKind::Press
             && let Some(action) = event::action_for(key, &app.mode)
         {
@@ -42,8 +85,60 @@ fn event_loop(terminal: &mut DefaultTerminal, mut app: App, editor: &str) -> Res
             *terminal = ratatui::init();
             app.editor_closed(result);
         }
+        if std::mem::take(&mut app.sync_requested) {
+            if !sync::is_set_up(dir) {
+                app.notify("Sync isn't set up: run `kru sync init <remote-url>`", true);
+                continue;
+            }
+            app.notify("Syncing…", false);
+            terminal.draw(|frame| ui::render(frame, app))?;
+            let (message, failed) = describe(sync::run(dir, false));
+            app.reload();
+            app.notify(message, failed);
+        }
+        if let Some(result) = background.and_then(|rx| rx.try_recv().ok()) {
+            let (message, failed) = describe(result);
+            app.reload();
+            app.notify(message, failed);
+        }
     }
     Ok(())
+}
+
+/// Syncs every [`AUTOSYNC_EVERY`] on a background thread; results arrive on
+/// the returned channel. The thread stops when the channel is dropped.
+fn autosync(dir: PathBuf) -> Receiver<kru::Result<Report>> {
+    let (results, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        loop {
+            thread::sleep(AUTOSYNC_EVERY);
+            if results.send(sync::run(&dir, false)).is_err() {
+                break;
+            }
+        }
+    });
+    receiver
+}
+
+/// A one-line summary of a sync for the footer, and whether it failed.
+fn describe(result: kru::Result<Report>) -> (String, bool) {
+    match result {
+        Ok(report) => {
+            let mut message = if report.pulled == 0 && report.pushed == 0 {
+                "Already in sync".to_string()
+            } else {
+                format!("Synced: pulled {}, pushed {}", report.pulled, report.pushed)
+            };
+            if !report.conflicts.is_empty() {
+                message.push_str(&format!(
+                    "; resolved {} conflict(s)",
+                    report.conflicts.len()
+                ));
+            }
+            (message, false)
+        }
+        Err(err) => (format!("Sync failed: {err}"), true),
+    }
 }
 
 #[cfg(test)]

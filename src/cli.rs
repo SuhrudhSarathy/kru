@@ -6,6 +6,7 @@ pub mod config;
 mod fields;
 mod json;
 mod output;
+pub mod sync;
 mod task;
 
 use anyhow::Result;
@@ -46,11 +47,30 @@ pub enum Command {
     /// Print where kru stores its data
     Path,
 
-    /// Show or change settings: the store directory, the editor
+    /// Sync tasks with your other devices through a git remote
+    Sync {
+        #[command(subcommand)]
+        command: Option<sync::SyncCommand>,
+    },
+
+    /// Show or change settings: the store directory, the editor, autosync
     Config {
         #[command(subcommand)]
         command: Option<config::ConfigCommand>,
     },
+}
+
+impl Command {
+    /// Whether the command can change tasks or buckets, so an autosync
+    /// should follow it.
+    pub fn changes_data(&self) -> bool {
+        match self {
+            Command::Task(command) => command.changes_data(),
+            Command::Bucket(command) => command.changes_data(),
+            Command::Prune { .. } => true,
+            Command::Path | Command::Config { .. } | Command::Sync { .. } => false,
+        }
+    }
 }
 
 /// Parses the command line: the command, plus any task field flags
@@ -82,6 +102,7 @@ pub fn run(
         Command::Task(command) => task::run(command, store, fields, as_json),
         Command::Bucket(command) => bucket::run(command, store, as_json),
         Command::Config { command } => config::run(command, as_json),
+        Command::Sync { command } => sync::run(command, store, as_json),
         Command::Prune { days } => {
             let pruned = store.prune(SignedDuration::from_hours(i64::from(days) * 24));
             store.save()?;

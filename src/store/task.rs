@@ -140,6 +140,7 @@ impl Store {
         let from = self.bucket_of(id)?;
         let task = self.buckets.get_mut(&from).unwrap().remove(id).unwrap();
         self.delete_md_of(&task);
+        self.tombstones.tasks.insert(id, jiff::Timestamp::now());
         Ok(task)
     }
 

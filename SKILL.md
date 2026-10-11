@@ -1,6 +1,6 @@
 ---
 name: kru
-description: Manage tasks and buckets with the `kru` CLI. Use when asked to add, list, find, update, complete, move or remove tasks, record context or notes on a task, or manage buckets. Always call kru with --json and parse the result.
+description: Manage tasks and buckets with the `kru` CLI. Use when asked to add, list, find, update, complete, move or remove tasks, record context or longer markdown notes on a task, manage buckets, or change kru's settings. Always call kru with --json and parse the result.
 ---
 
 # Using kru from an agent
@@ -24,8 +24,11 @@ agents (LLMs, scripts) driving it from a shell. Humans can read it too.
    `id` never changes. Take it from the JSON (`.id`) and pass it back as is.
 5. **Use `--all` to see done tasks.** `task list` hides them by default.
 6. **Add context, don't overwrite it.** Use `task ctx <task> -a <text>` to
-   record notes. Replacing context discards what was there, so it needs
-   `--force` (an agent can't answer the confirmation prompt).
+   record short notes. Replacing context discards what was there, so it
+   needs `--force` (an agent can't answer the confirmation prompt).
+7. **For long or rich notes, use the task's markdown file.** Get its path
+   with `task md <task> --json` (this creates it if needed, never opens an
+   editor) and read or write the file directly.
 
 ## Setup
 
@@ -34,8 +37,9 @@ cargo install --path .        # from the repo; installs `kru` on PATH
 kru path --json               # {"path": "..."}: where data is stored
 ```
 
-Data lives in the user's cache directory. To work on a throwaway copy
-(tests, dry runs), point `KRU_DIR` at another directory:
+Data lives in the user's cache directory unless the `dir` setting says
+otherwise (see [Settings](#settings)). To work on a throwaway copy (tests,
+dry runs), point `KRU_DIR` at another directory; it overrides the setting:
 
 ```sh
 export KRU_DIR="$(mktemp -d)"
@@ -61,6 +65,7 @@ versions, so ignore keys you don't know.
   "completed": null,
   "created": "2026-10-10T12:49:45.711884Z",
   "edited": "2026-10-10T12:49:45.711884Z",
+  "mdpath": "notes/01a125dc-bcef-7784-8fc5-17784df85dec.md",
   "id": "01a125dc-bcef-7784-8fc5-17784df85dec"
 }
 ```
@@ -76,6 +81,7 @@ versions, so ignore keys you don't know.
 | `due` | RFC 3339 UTC string or `null` | |
 | `completed` | RFC 3339 UTC string or `null` | Set when marked done |
 | `created`, `edited` | RFC 3339 UTC string | |
+| `mdpath` | string | Attached markdown file, relative to the store directory; `""` if none. `task md --json` gives the absolute path |
 | `id` | UUID string | Stable for the task's lifetime; use it to refer to the task |
 
 ### Bucket
@@ -109,6 +115,8 @@ versions, so ignore keys you don't know.
 | `kru task ctx <task> --json` | task (read its `ctx`) |
 | `kru task ctx <task> -a <text> --json` | `{"task": task, "changes": [change, …]}`; adds `text` as a new line |
 | `kru task ctx <task> <text> --force --json` | same; replaces the whole context (`""` clears it) |
+| `kru task md <task> --json` | `{"task": task, "path": "/abs/…/notes/<id>.md", "created": bool}`; attaches the file if needed |
+| `kru task md <task> --remove --force --json` | `{"task": task, "removed": "/abs/…"}`; deletes the file |
 | `kru task done <task>… --json` | array of the updated tasks |
 | `kru task move <task> -b <bucket> --json` | the task, with its new `num` |
 | `kru task remove <task>… --json` | array of the removed tasks, as they were |
@@ -118,7 +126,10 @@ versions, so ignore keys you don't know.
 | `kru bucket rename <name> <new-name> --json` | bucket |
 | `kru bucket remove <name> [--force] --json` | the removed bucket |
 | `kru prune [--days N] --json` | `{"pruned": N}` |
-| `kru path --json` | `{"path": "…"}` |
+| `kru path --json` | `{"path": "…"}`: the store directory |
+| `kru config --json` | every setting, see [Settings](#settings) |
+| `kru config get <key> --json` | one setting |
+| `kru config set <key> <value> --json` / `unset <key>` | the setting after the change |
 
 Aliases: `task ls`, `task edit` (= `mark`), `task mv`, `task rm`,
 `bucket ls`, `bucket rm`.
@@ -163,6 +174,10 @@ date (no due date last), then higher priority.
   can't be empty, and it's at most 500 characters. Context keeps its line
   breaks (blank lines at the ends are dropped, runs of blank lines become
   one), may be empty, and is at most 10,000 characters.
+- **Markdown files live with the data.** `task md` creates
+  `<store dir>/notes/<task id>.md` (starting with the description as a
+  heading) and links it to the task. Removing or pruning the task deletes
+  the file. Deleting it on its own needs `--remove --force`.
 - **Context replacement is guarded.** `task ctx <task> <text>` on a task
   that already has context fails without `--force` when not run in a
   terminal (or with `--json`). Appending (`-a`) never needs it. Note that
@@ -210,6 +225,13 @@ kru task show "$id" --json | jq -r '.ctx'
 # Replace the context entirely (agents must pass --force).
 kru task ctx "$id" "Final version sent" --force --json
 
+# Keep long notes (code, lists, links) in the task's markdown file.
+md=$(kru task md "$id" --json | jq -r '.path')
+cat >> "$md" <<'EOF'
+## Findings
+- The report template lives in `templates/q3.md`
+EOF
+
 # Count open tasks per bucket.
 kru bucket list --json | jq 'map({(.name): .open}) | add'
 ```
@@ -217,6 +239,26 @@ kru bucket list --json | jq 'map({(.name): .open}) | add'
 ISO 8601 UTC timestamps compare correctly as strings, which is why the `jq`
 date filters above work. The `date` fallback covers macOS (`-v`) and GNU
 (`-d`).
+
+## Settings
+
+Settings live in a JSON file in the user's config folder (`kru config path`;
+`KRU_CONFIG` points kru at another file). Don't change them unless asked.
+
+| Key | Meaning | Effective value comes from |
+|---|---|---|
+| `dir` | where tasks are stored | `$KRU_DIR`, else this setting, else the cache folder |
+| `editor` | command that opens files (`nvim`, `code --wait`) | this setting, else `$VISUAL`, else `$EDITOR`, else `vi` |
+
+`kru config --json` returns, per key, what kru uses, where it came from
+(`config`, `env:NAME` or `default`) and what the file says (`null` if unset):
+
+```json
+{"dir": {"value": "/Users/me/Library/Caches/kru", "source": "default", "set": null},
+ "editor": {"value": "nvim", "source": "config", "set": "nvim"}}
+```
+
+Changing `dir` doesn't move existing data.
 
 ## Errors
 
@@ -233,6 +275,9 @@ date filters above work. The `date` fallback covers macOS (`-v`) and GNU
 | `Error: nothing to change; pass any of …` | 1 | give `task mark` at least one field flag |
 | `Error: replacing the context needs confirmation; pass --force …` | 1 | use `-a` to add instead, or pass `--force` |
 | `Error: …: written by a newer kru (file format N; …)` | 1 | the data was written by a newer kru; upgrade kru, don't edit the files |
+| `Error: deleting the markdown file needs confirmation; pass --force …` | 1 | pass `--force` if deleting is intended |
+| `Error: #N has no markdown file` | 1 | nothing to remove; `task md <task> --json` creates one |
+| `Error: no config key \`x\` (expected dir or editor)` | 1 | use one of the keys in [Settings](#settings) |
 | `error: invalid value 'x' for '--status …'` | 2 | bad argument; see `--help` |
 
 ## Example session

@@ -129,6 +129,10 @@ pub struct Task {
 
     #[serde(default)]
     pub time_completed: Option<Timestamp>,
+
+    /// The attached markdown file, relative to the store directory
+    /// (`notes/<id>.md`); see [`Store::attach_md`](crate::Store::attach_md).
+    pub mdpath: Option<String>,
 }
 
 impl Task {
@@ -142,6 +146,7 @@ impl Task {
             status: Status::ToDo,
             due: None,
             time_completed: None,
+            mdpath: None,
         }
     }
 
@@ -266,6 +271,12 @@ impl Task {
                 .detailed(!open),
             Field::time("created", "Created", Some(self.header.time_created)),
             Field::time("edited", "Edited", Some(self.header.time_last_edited)),
+            Field::text(
+                "mdpath",
+                "Markdown",
+                self.mdpath.clone().unwrap_or_default(),
+            )
+            .detailed(self.mdpath.is_some()),
             Field::text("id", "Id", self.header.id.to_string()).toned(Tone::Muted),
         ]
     }

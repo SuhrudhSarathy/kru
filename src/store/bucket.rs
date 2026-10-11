@@ -70,7 +70,11 @@ impl Store {
         if self.state.active == Some(id) {
             self.state.active = None;
         }
-        Ok(self.buckets.remove(&id).expect("id comes from the map"))
+        let bucket = self.buckets.remove(&id).expect("id comes from the map");
+        for task in bucket.iter() {
+            self.delete_md_of(task);
+        }
+        Ok(bucket)
     }
 
     /// Id of the bucket with this name (case-insensitive).

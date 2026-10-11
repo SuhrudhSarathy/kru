@@ -94,6 +94,7 @@ mod tests {
                 "completed",
                 "created",
                 "edited",
+                "mdpath",
                 "id"
             ]
         );

@@ -39,7 +39,8 @@ impl App {
             | Action::CycleStatus
             | Action::CyclePriority
             | Action::EditDue
-            | Action::MoveTask => self.on_task(action)?,
+            | Action::MoveTask
+            | Action::OpenMd => self.on_task(action)?,
 
             Action::InvalidKey(key) => self.error(format!("`{key}` does nothing here")),
             Action::Input(_)
@@ -130,6 +131,12 @@ impl App {
             Action::MoveTask => {
                 self.require_task()?;
                 self.prompt(Prompt::MoveTask, String::new());
+            }
+            Action::OpenMd => {
+                let (id, _) = self.require_selected()?;
+                let (path, _) = self.store.attach_md(id)?;
+                self.store.save()?;
+                self.open_file = Some(path);
             }
             Action::Remove => {
                 let (id, label) = self.require_selected()?;

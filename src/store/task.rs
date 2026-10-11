@@ -138,7 +138,9 @@ impl Store {
     /// Deletes a task and returns it. This renumbers tasks.
     pub fn remove_task(&mut self, id: Uuid) -> Result<Task> {
         let from = self.bucket_of(id)?;
-        Ok(self.buckets.get_mut(&from).unwrap().remove(id).unwrap())
+        let task = self.buckets.get_mut(&from).unwrap().remove(id).unwrap();
+        self.delete_md_of(&task);
+        Ok(task)
     }
 
     /// Id of the bucket containing the task.
@@ -151,7 +153,7 @@ impl Store {
     }
 
     /// Finds a task in any bucket for editing in place.
-    fn task_mut(&mut self, id: Uuid) -> Result<&mut Task> {
+    pub(super) fn task_mut(&mut self, id: Uuid) -> Result<&mut Task> {
         self.buckets
             .values_mut()
             .find_map(|bucket| bucket.get_mut(id))

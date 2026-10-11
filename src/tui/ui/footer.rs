@@ -22,7 +22,7 @@ pub(super) fn render(frame: &mut Frame, app: &App, area: Rect) {
 /// A macro so it can be joined with `concat!` at compile time.
 macro_rules! task_keys {
     () => {
-        "e edit · s status · p priority · d due · m move · r remove"
+        "e edit · o notes · s status · p priority · d due · m move · r remove"
     };
 }
 

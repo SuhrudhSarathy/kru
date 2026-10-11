@@ -20,6 +20,7 @@
 mod bucket;
 mod io;
 mod migrate;
+mod notes;
 mod task;
 
 use std::collections::BTreeMap;
@@ -30,6 +31,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::bucket::Bucket;
+use crate::config::Config;
 use crate::task::Task;
 use crate::utils::error::{Error, Result};
 use directories::ProjectDirs;
@@ -76,12 +78,16 @@ impl Store {
         &self.dir
     }
 
-    /// `$KRU_DIR` if set, otherwise the platform cache dir
-    /// (e.g. `~/Library/Caches/kru` on macOS, `~/.cache/kru` on Linux).
+    /// Where the store lives: `$KRU_DIR` if set, else the `dir` setting
+    /// (see [`Config`]), else [`Store::cache_dir`].
     pub fn default_dir() -> Result<PathBuf> {
-        if let Some(dir) = std::env::var_os(DIR_ENV) {
-            return Ok(dir.into());
-        }
+        let (dir, _) = Config::load()?.effective("dir")?;
+        Ok(dir.into())
+    }
+
+    /// The platform cache dir: `~/Library/Caches/kru` on macOS,
+    /// `~/.cache/kru` on Linux.
+    pub fn cache_dir() -> Result<PathBuf> {
         ProjectDirs::from("", "", "kru")
             .map(|dirs| dirs.cache_dir().to_path_buf())
             .ok_or(Error::NoCacheDir)

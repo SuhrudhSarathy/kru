@@ -14,6 +14,8 @@ mod normal;
 mod prompt;
 mod select;
 
+use std::path::PathBuf;
+
 use kru::Store;
 use uuid::Uuid;
 
@@ -70,6 +72,8 @@ pub enum Action {
     CyclePriority,
     EditDue,
     MoveTask,
+    /// Open the task's markdown file in the editor, creating it if needed.
+    OpenMd,
     Input(char),
     /// Alt+Enter while typing: a line break, in text fields.
     Newline,
@@ -93,6 +97,9 @@ pub struct App {
     pub mode: Mode,
     /// The task shown in the expanded view, if open.
     pub expanded: Option<Uuid>,
+    /// A file to open in the editor; the event loop takes it, suspends the
+    /// TUI while the editor runs, then calls [`App::editor_closed`].
+    pub open_file: Option<PathBuf>,
     pub message: Option<Message>,
     pub should_quit: bool,
 }
@@ -117,6 +124,7 @@ impl App {
             done_index: 0,
             mode: Mode::Normal,
             expanded: None,
+            open_file: None,
             message: None,
             should_quit: false,
         }
@@ -137,6 +145,14 @@ impl App {
             self.error(err);
         }
         self.clamp_selection();
+    }
+
+    /// Reports how editing [`App::open_file`] went.
+    pub fn editor_closed(&mut self, result: std::result::Result<(), String>) {
+        match result {
+            Ok(()) => self.info("Closed the notes file"),
+            Err(err) => self.error(err),
+        }
     }
 
     /// Saves the store and shows `message` on success.

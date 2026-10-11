@@ -83,21 +83,27 @@ impl Store {
         write_json(&self.dir.join("state.json"), &self.state)
     }
 
-    /// Deletes done tasks completed more than `retention` ago.
-    /// Returns the number of tasks deleted.
+    /// Deletes done tasks completed more than `retention` ago, with their
+    /// markdown files. Returns the number of tasks deleted.
     pub fn prune(&mut self, retention: SignedDuration) -> usize {
         let cutoff = Timestamp::now()
             .checked_sub(retention)
             .unwrap_or(Timestamp::MIN);
-        self.buckets
-            .values_mut()
-            .map(|bucket| {
-                bucket.retain(|task| {
-                    let completed = task.time_completed.unwrap_or(task.header.time_last_edited);
-                    !(task.is_done() && completed < cutoff)
-                })
+        let expired: Vec<Uuid> = self
+            .entries()
+            .filter(|e| {
+                let completed = e
+                    .task
+                    .time_completed
+                    .unwrap_or(e.task.header.time_last_edited);
+                e.task.is_done() && completed < cutoff
             })
-            .sum()
+            .map(|e| e.task.header.id)
+            .collect();
+        for &id in &expired {
+            let _ = self.remove_task(id);
+        }
+        expired.len()
     }
 }
 

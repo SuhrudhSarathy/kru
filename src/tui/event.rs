@@ -34,6 +34,7 @@ pub fn action_for(key: KeyEvent, mode: &Mode) -> Option<Action> {
             KeyCode::Char('p') => Action::CyclePriority,
             KeyCode::Char('d') => Action::EditDue,
             KeyCode::Char('m') => Action::MoveTask,
+            KeyCode::Char('o') => Action::OpenMd,
             _ => invalid(key),
         },
         Mode::Input { .. } => match key.code {

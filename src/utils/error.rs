@@ -59,6 +59,12 @@ pub enum Error {
     #[error("could not determine a cache directory")]
     NoCacheDir,
 
+    #[error("could not determine a config directory")]
+    NoConfigDir,
+
+    #[error("no config key `{0}` (expected dir or editor)")]
+    UnknownConfigKey(String),
+
     #[error("{}: {source}", path.display())]
     Io { path: PathBuf, source: io::Error },
 

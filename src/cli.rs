@@ -2,6 +2,7 @@
 //! [`kru::Store`]; no task or bucket logic lives here.
 
 mod bucket;
+pub mod config;
 mod fields;
 mod json;
 mod output;
@@ -44,9 +45,14 @@ pub enum Command {
 
     /// Print where kru stores its data
     Path,
+
+    /// Show or change settings: the store directory, the editor
+    Config {
+        #[command(subcommand)]
+        command: Option<config::ConfigCommand>,
+    },
 }
 
-/// Runs a parsed command against the store.
 /// Parses the command line: the command, plus any task field flags
 /// (`--priority high`, …) given to `task add` or `task mark`.
 pub fn parse() -> (Cli, Vec<FieldInput>) {
@@ -75,6 +81,7 @@ pub fn run(
     match command {
         Command::Task(command) => task::run(command, store, fields, as_json),
         Command::Bucket(command) => bucket::run(command, store, as_json),
+        Command::Config { command } => config::run(command, as_json),
         Command::Prune { days } => {
             let pruned = store.prune(SignedDuration::from_hours(i64::from(days) * 24));
             store.save()?;

@@ -1,4 +1,5 @@
 pub mod bucket;
+pub mod config;
 pub mod store;
 pub mod task;
 pub mod utils;

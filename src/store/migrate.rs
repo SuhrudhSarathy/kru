@@ -28,7 +28,7 @@ pub(super) enum File {
 type Step = fn(File, &mut Value);
 
 /// The format history, oldest first.
-const STEPS: &[Step] = &[add_task_context];
+const STEPS: &[Step] = &[add_task_context, add_task_mdpath];
 
 /// The format this kru reads and writes. Files without a version (written
 /// before versioning) are version 0.
@@ -77,6 +77,20 @@ fn add_task_context(kind: File, file: &mut Value) {
     }
 }
 
+/// 1 → 2: tasks gained `mdpath` (an attached markdown file), unset for
+/// existing tasks.
+fn add_task_mdpath(kind: File, file: &mut Value) {
+    if kind != File::Bucket {
+        return;
+    }
+    let Some(tasks) = file.get_mut("tasks").and_then(Value::as_object_mut) else {
+        return;
+    };
+    for task in tasks.values_mut().filter_map(Value::as_object_mut) {
+        task.entry("mdpath").or_insert(Value::Null);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,6 +106,7 @@ mod tests {
         assert!(upgrade(File::Bucket, &mut file, 0));
         assert_eq!(file["tasks"]["a"]["ctx"], "");
         assert_eq!(file["tasks"]["b"]["ctx"], "kept");
+        assert_eq!(file["tasks"]["a"]["mdpath"], Value::Null);
 
         // Already current: nothing to do.
         assert!(!upgrade(File::Bucket, &mut file, VERSION));

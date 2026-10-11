@@ -3,6 +3,7 @@ use std::io::{self, IsTerminal, Write};
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use kru::Store;
+use kru::config::Config;
 use kru::task::{Priority, Status, Task};
 use uuid::Uuid;
 
@@ -50,6 +51,24 @@ pub enum TaskCommand {
 
         /// Replace the context without asking
         #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Open a task's markdown notes file in your editor, creating it if needed
+    Md {
+        #[arg(help = TASK_HELP)]
+        task: String,
+
+        /// Print the file's path instead of opening it (implied by --json)
+        #[arg(long, conflicts_with = "remove")]
+        path: bool,
+
+        /// Delete the file (asks first unless --force)
+        #[arg(long)]
+        remove: bool,
+
+        /// Delete without asking
+        #[arg(short, long, requires = "remove")]
         force: bool,
     },
 
@@ -177,11 +196,7 @@ pub fn run(
                 (Some(line), _) => entry.task.ctx_with_line(&line),
                 (None, Some(text)) => {
                     if !current.is_empty() && !force {
-                        if as_json || !io::stdin().is_terminal() {
-                            bail!(
-                                "replacing the context needs confirmation; pass --force to do it without asking"
-                            );
-                        }
+                        require_terminal("replacing the context", as_json)?;
                         eprintln!("Context of #{num} now:");
                         for line in current.lines() {
                             eprintln!("  {line}");
@@ -219,6 +234,48 @@ pub fn run(
                 println!("Cleared the context of #{}.", entry.num);
             } else {
                 println!("Context of #{}:\n{}", entry.num, entry.task.ctx);
+            }
+        }
+
+        TaskCommand::Md {
+            task,
+            path,
+            remove,
+            force,
+        } => {
+            let id = store.resolve(&task)?;
+            let num = store.find(id)?.num;
+            if remove {
+                let Some(file) = store.md_path(id)? else {
+                    bail!("#{num} has no markdown file");
+                };
+                if !force {
+                    require_terminal("deleting the markdown file", as_json)?;
+                    if !ask(&format!("Delete {}?", file.display()))? {
+                        println!("Kept {}.", file.display());
+                        return Ok(());
+                    }
+                }
+                store.remove_md(id)?;
+                store.save()?;
+                if as_json {
+                    let task = json::entry(&store.find(id)?);
+                    json::print(serde_json::json!({ "task": task, "removed": file }));
+                } else {
+                    println!("Deleted {}.", file.display());
+                }
+                return Ok(());
+            }
+
+            let (file, created) = store.attach_md(id)?;
+            store.save()?;
+            if as_json {
+                let task = json::entry(&store.find(id)?);
+                json::print(serde_json::json!({ "task": task, "path": file, "created": created }));
+            } else if path {
+                println!("{}", file.display());
+            } else {
+                crate::editor::open(&Config::load()?.editor(), &file)?;
             }
         }
 
@@ -343,8 +400,18 @@ fn resolve(store: &Store, references: &[String]) -> Result<Vec<(usize, Uuid)>> {
     Ok(resolved)
 }
 
-/// Asks `question` on the terminal; anything but y/yes means no. Only call
-/// it when stdin is a terminal, so scripts never hang waiting for an answer.
+/// Fails, with a hint to pass `--force`, if `action` can't be confirmed
+/// interactively: with `--json` or when stdin isn't a terminal. Keeps
+/// scripts from hanging on a question nobody will answer.
+fn require_terminal(action: &str, as_json: bool) -> Result<()> {
+    if as_json || !io::stdin().is_terminal() {
+        bail!("{action} needs confirmation; pass --force to do it without asking");
+    }
+    Ok(())
+}
+
+/// Asks `question` on the terminal; anything but y/yes means no. Call
+/// [`require_terminal`] first.
 fn ask(question: &str) -> Result<bool> {
     eprint!("{question} [y/N] ");
     io::stderr().flush()?;

@@ -1,4 +1,5 @@
 mod cli;
+mod editor;
 mod theme;
 mod tui;
 
@@ -10,9 +11,10 @@ fn main() -> anyhow::Result<()> {
     if cli.json && cli.command.is_none() {
         bail!("--json needs a command, e.g. `kru task list --json`");
     }
-    let mut store = Store::open_default()?;
     match cli.command {
-        Some(command) => cli::run(command, &mut store, &fields, cli.json),
-        None => tui::run(store),
+        // Settings don't need the store, which may be what's misconfigured.
+        Some(cli::Command::Config { command }) => cli::config::run(command, cli.json),
+        Some(command) => cli::run(command, &mut Store::open_default()?, &fields, cli.json),
+        None => tui::run(Store::open_default()?),
     }
 }

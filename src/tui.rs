@@ -8,6 +8,7 @@ mod ui;
 
 use anyhow::Result;
 use kru::Store;
+use kru::config::Config;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{Event, KeyEventKind, read};
 
@@ -16,14 +17,17 @@ use app::App;
 /// Opens the TUI and blocks until the user quits.
 /// The terminal is restored even if the loop returns an error.
 pub fn run(store: Store) -> Result<()> {
+    let editor = Config::load()?.editor();
     let mut terminal = ratatui::init();
-    let result = event_loop(&mut terminal, App::new(store));
+    let result = event_loop(&mut terminal, App::new(store), &editor);
     ratatui::restore();
     result
 }
 
 /// Draws, waits for a key, applies the matching action; repeats until quit.
-fn event_loop(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
+/// When the app asks for a file to be opened, hands the terminal to the
+/// editor and takes it back afterwards.
+fn event_loop(terminal: &mut DefaultTerminal, mut app: App, editor: &str) -> Result<()> {
     while !app.should_quit {
         terminal.draw(|frame| ui::render(frame, &app))?;
         if let Event::Key(key) = read()?
@@ -31,6 +35,12 @@ fn event_loop(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
             && let Some(action) = event::action_for(key, &app.mode)
         {
             app.update(action);
+        }
+        if let Some(path) = app.open_file.take() {
+            ratatui::restore();
+            let result = crate::editor::open(editor, &path).map_err(|err| format!("{err:#}"));
+            *terminal = ratatui::init();
+            app.editor_closed(result);
         }
     }
     Ok(())
@@ -330,6 +340,37 @@ mod tests {
         }
         alt_enter(&mut app);
         assert!(matches!(&app.mode, Mode::Input { buffer, .. } if buffer == "Half"));
+        assert!(app.message.as_ref().unwrap().is_error);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn o_attaches_and_opens_the_markdown_file() {
+        let dir = std::env::temp_dir().join(format!("kru-tui-{}", uuid::Uuid::new_v4()));
+        let mut app = App::new(Store::open(&dir).unwrap());
+        app.update(Action::Add);
+        type_text(&mut app, "home");
+        app.update(Action::FocusTasks);
+        app.update(Action::Add);
+        type_text(&mut app, "Fix the sink");
+
+        // o creates the file and asks the event loop to open it.
+        press(&mut app, KeyCode::Char('o'));
+        let path = app.open_file.take().expect("a file to open");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "# Fix the sink\n\n"
+        );
+        let id = task(&app, 1).header.id;
+        assert_eq!(task(&app, 1).mdpath, Some(format!("notes/{id}.md")));
+
+        // The expanded view shows where it is.
+        press(&mut app, KeyCode::Char('x'));
+        let screen_text = screen(&app);
+        assert!(screen_text.contains("Markdown"), "{screen_text}");
+
+        app.editor_closed(Err("the editor `nope` exited".into()));
         assert!(app.message.as_ref().unwrap().is_error);
 
         let _ = std::fs::remove_dir_all(&dir);

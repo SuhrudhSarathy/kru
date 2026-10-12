@@ -48,7 +48,7 @@ download against.
 
 ### From source
 
-With [Rust](https://rustup.rs) 1.88 or newer:
+With [Rust](https://rustup.rs) 1.89 or newer:
 
 ```sh
 cargo install --git https://github.com/SuhrudhSarathy/kru --locked
@@ -57,6 +57,10 @@ cargo install --git https://github.com/SuhrudhSarathy/kru --locked
 ## Getting started
 
 `kru --help` lists the commands; `kru` on its own opens the terminal UI.
+
+To keep tasks in step across devices, create an empty private git repository
+(e.g. on GitHub) and run `kru sync init <repo-url>` on each device. Syncing
+needs `git` installed.
 
 Agents and scripts: see [SKILL.md](SKILL.md).
 

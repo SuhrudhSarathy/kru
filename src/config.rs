@@ -32,6 +32,11 @@ pub struct Config {
     /// (`notepad` on Windows).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub editor: Option<String>,
+
+    /// Sync in the background: after CLI commands that change tasks, and
+    /// every few minutes while the TUI is open. Off by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub autosync: Option<bool>,
 }
 
 /// Where a setting's effective value comes from.
@@ -44,7 +49,7 @@ pub enum Source {
 
 impl Config {
     /// Every setting, in display order.
-    pub const KEYS: &[&str] = &["dir", "editor"];
+    pub const KEYS: &[&str] = &["dir", "editor", "autosync"];
 
     /// The config file's path: `$KRU_CONFIG`, or the platform config folder.
     pub fn path() -> Result<PathBuf> {
@@ -91,6 +96,7 @@ impl Config {
         Ok(match key {
             "dir" => self.dir.as_ref().map(|dir| dir.display().to_string()),
             "editor" => self.editor.clone(),
+            "autosync" => self.autosync.map(on_off),
             _ => return Err(unknown(key)),
         })
     }
@@ -111,6 +117,19 @@ impl Config {
                 self.dir = Some(dir);
             }
             "editor" => self.editor = Some(value.to_string()),
+            "autosync" => {
+                self.autosync = Some(match value.to_lowercase().as_str() {
+                    "on" | "true" | "yes" => true,
+                    "off" | "false" | "no" => false,
+                    _ => {
+                        return Err(Error::InvalidConfigValue {
+                            key: "autosync",
+                            value: value.to_string(),
+                            expected: "on or off",
+                        });
+                    }
+                });
+            }
             _ => return Err(unknown(key)),
         }
         Ok(())
@@ -121,6 +140,7 @@ impl Config {
         match key {
             "dir" => self.dir = None,
             "editor" => self.editor = None,
+            "autosync" => self.autosync = None,
             _ => return Err(unknown(key)),
         }
         Ok(())
@@ -152,8 +172,17 @@ impl Config {
                 }
                 Ok((DEFAULT_EDITOR.to_string(), Source::Default))
             }
+            "autosync" => Ok(match self.autosync {
+                Some(on) => (on_off(on), Source::Config),
+                None => (on_off(false), Source::Default),
+            }),
             _ => Err(unknown(key)),
         }
+    }
+
+    /// Whether to sync in the background (see [`Config::autosync`]).
+    pub fn autosync(&self) -> bool {
+        self.autosync.unwrap_or(false)
     }
 
     /// The editor command to run (see [`Config::effective`]).
@@ -162,6 +191,10 @@ impl Config {
             .map(|(editor, _)| editor)
             .unwrap_or_else(|_| DEFAULT_EDITOR.to_string())
     }
+}
+
+fn on_off(on: bool) -> String {
+    if on { "on" } else { "off" }.to_string()
 }
 
 fn unknown(key: &str) -> Error {

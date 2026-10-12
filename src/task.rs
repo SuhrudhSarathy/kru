@@ -115,7 +115,7 @@ impl FromStr for Status {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Task {
     pub header: Header,
     pub description: String,

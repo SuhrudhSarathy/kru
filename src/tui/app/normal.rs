@@ -9,6 +9,7 @@ impl App {
     pub(super) fn on_normal(&mut self, action: Action) -> Result<()> {
         match action {
             Action::Quit => self.should_quit = true,
+            Action::Sync => self.sync_requested = true,
             Action::Back => match self.expanded {
                 Some(_) => self.expanded = None,
                 None => self.should_quit = true,

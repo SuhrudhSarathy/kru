@@ -30,6 +30,13 @@ pub enum BucketCommand {
     },
 }
 
+impl BucketCommand {
+    /// Whether the command can change buckets.
+    pub fn changes_data(&self) -> bool {
+        !matches!(self, BucketCommand::List)
+    }
+}
+
 /// Runs a `kru bucket …` command; `as_json` prints JSON instead of text.
 pub fn run(command: BucketCommand, store: &mut Store, as_json: bool) -> Result<()> {
     match command {

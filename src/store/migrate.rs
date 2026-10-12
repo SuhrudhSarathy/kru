@@ -16,11 +16,13 @@ use serde_json::{Map, Value};
 
 /// Which kind of file a step is upgrading.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(super) enum File {
+pub(crate) enum File {
     /// `buckets/<id>.json`
     Bucket,
     /// `state.json`
     State,
+    /// `tombstones.json`
+    Tombstones,
 }
 
 /// Turns a file of version `i` into version `i + 1`, where `i` is the

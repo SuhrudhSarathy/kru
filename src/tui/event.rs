@@ -35,6 +35,7 @@ pub fn action_for(key: KeyEvent, mode: &Mode) -> Option<Action> {
             KeyCode::Char('d') => Action::EditDue,
             KeyCode::Char('m') => Action::MoveTask,
             KeyCode::Char('o') => Action::OpenMd,
+            KeyCode::Char('S') => Action::Sync,
             _ => invalid(key),
         },
         Mode::Input { .. } => match key.code {

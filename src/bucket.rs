@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::task::{Status, Task};
 use crate::utils::header::Header;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bucket {
     pub header: Header,
     pub name: String,

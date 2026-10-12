@@ -1,6 +1,6 @@
 ---
 name: kru
-description: Manage tasks and buckets with the `kru` CLI. Use when asked to add, list, find, update, complete, move or remove tasks, record context or longer markdown notes on a task, manage buckets, or change kru's settings. Always call kru with --json and parse the result.
+description: Manage tasks and buckets with the `kru` CLI. Use when asked to add, list, find, update, complete, move or remove tasks, record context or longer markdown notes on a task, manage buckets, sync tasks across devices, or change kru's settings. Always call kru with --json and parse the result.
 ---
 
 # Using kru from an agent
@@ -130,6 +130,9 @@ versions, so ignore keys you don't know.
 | `kru config --json` | every setting, see [Settings](#settings) |
 | `kru config get <key> --json` | one setting |
 | `kru config set <key> <value> --json` / `unset <key>` | the setting after the change |
+| `kru sync --json` | `{"pulled": n, "pushed": n, "conflicts": [{"kind": "task"\|"bucket", "id": …, "summary": "priority: kept high over low"}]}` |
+| `kru sync status --json` | `{"remote", "last_sync", "local_changes", "ahead", "behind"}`, from the last fetch (no network) |
+| `kru sync init <remote-url> --json` | same as `kru sync`; sets up syncing first |
 
 Aliases: `task ls`, `task edit` (= `mark`), `task mv`, `task rm`,
 `bucket ls`, `bucket rm`.
@@ -186,6 +189,30 @@ date (no due date last), then higher priority.
   automatically whenever kru starts.
 - **Removing a bucket with open tasks needs `--force`** and deletes its
   tasks.
+- **Several kru processes can share a store.** Saves lock the store and
+  merge in whatever another process saved meanwhile, so a CLI call never
+  undoes what an open TUI did, or the other way round.
+
+## Syncing across devices
+
+The store can sync with the user's other devices through a git remote
+(`kru sync status --json` fails with "sync isn't set up" if it doesn't).
+Only run `kru sync init` when the user asks and gives the remote.
+
+- **`kru sync`** commits local changes, fetches, merges, and pushes. Run it
+  before reading tasks if other devices may have changed them, and after
+  making changes if the user wants them on other devices. With `--json`, git
+  never prompts; a remote that needs a password fails instead of waiting.
+- **Merging is automatic, by task and bucket id.** A change made on one
+  device wins; the same field changed on both devices goes to the later
+  edit; an edit made after a delete elsewhere keeps the task, a delete made
+  after an edit removes it; buckets with the same name are merged.
+  `conflicts` lists each decision. Markdown notes merge as text; if both
+  devices changed the same lines, the later file wins.
+- **Ids stay the same across devices; numbers don't.** Syncing can bring in
+  tasks that shift numbers, which is another reason to use `id`.
+- **With `autosync` on**, every command that changes tasks starts a sync in
+  the background (output in `<store dir>/sync.log`).
 
 ## Recipes
 
@@ -248,7 +275,8 @@ Settings live in a JSON file in the user's config folder (`kru config path`;
 | Key | Meaning | Effective value comes from |
 |---|---|---|
 | `dir` | where tasks are stored | `$KRU_DIR`, else this setting, else the cache folder |
-| `editor` | command that opens files (`nvim`, `code --wait`) | this setting, else `$VISUAL`, else `$EDITOR`, else `vi` |
+| `editor` | command that opens files (`nvim`, `code --wait`) | this setting, else `$VISUAL`, else `$EDITOR`, else `vi` (`notepad` on Windows) |
+| `autosync` | `on`/`off`: sync in the background after changes (and every 5 minutes in the TUI) | this setting, else `off` |
 
 `kru config --json` returns, per key, what kru uses, where it came from
 (`config`, `env:NAME` or `default`) and what the file says (`null` if unset):
@@ -277,7 +305,11 @@ Changing `dir` doesn't move existing data.
 | `Error: …: written by a newer kru (file format N; …)` | 1 | the data was written by a newer kru; upgrade kru, don't edit the files |
 | `Error: deleting the markdown file needs confirmation; pass --force …` | 1 | pass `--force` if deleting is intended |
 | `Error: #N has no markdown file` | 1 | nothing to remove; `task md <task> --json` creates one |
-| `Error: no config key \`x\` (expected dir or editor)` | 1 | use one of the keys in [Settings](#settings) |
+| `Error: no config key \`x\` (expected dir, editor or autosync)` | 1 | use one of the keys in [Settings](#settings) |
+| `Error: sync isn't set up for this store; …` | 1 | ask the user for a git remote; `kru sync init <remote-url>` |
+| `Error: git isn't installed …` | 1 | syncing needs `git` on `PATH` |
+| `Error: git fetch failed: …` / `git push failed: …` | 1 | network or access problem with the remote; nothing was lost, retry later |
+| `Error: this store already syncs with <url>` | 1 | `sync init` was given a different remote than the one set up |
 | `error: invalid value 'x' for '--status …'` | 2 | bad argument; see `--help` |
 
 ## Example session

@@ -4,8 +4,10 @@
 //! overridable with `KRU_DIR`):
 //!
 //! ```text
-//! state.json             # { "active": <bucket id> }
+//! state.json             # { "active": <bucket id> }  (this device only)
 //! buckets/<id>.json      # one file per bucket, tasks included
+//! tombstones.json        # when deleted tasks and buckets were deleted
+//! notes/<task id>.md     # markdown files attached to tasks
 //! ```
 //!
 //! Every frontend (CLI, TUI, ...) goes through [`Store`]; it is the only
@@ -18,10 +20,11 @@
 //! - `io.rs`: opening, saving and pruning
 
 mod bucket;
-mod io;
-mod migrate;
+pub(crate) mod io;
+pub(crate) mod migrate;
 mod notes;
 mod task;
+mod tombstones;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -32,9 +35,12 @@ use uuid::Uuid;
 
 use crate::bucket::Bucket;
 use crate::config::Config;
+use crate::sync::Snapshot;
 use crate::task::Task;
 use crate::utils::error::{Error, Result};
 use directories::ProjectDirs;
+
+pub use tombstones::{TOMBSTONE_RETENTION, Tombstones};
 
 /// How long done tasks are kept before [`Store::prune`] deletes them.
 pub const DONE_RETENTION: SignedDuration = SignedDuration::from_hours(7 * 24);
@@ -70,9 +76,24 @@ pub struct Store {
 
     // State: Active bucket uuid
     state: State,
+
+    /// When deleted tasks and buckets were deleted, for syncing.
+    tombstones: Tombstones,
+
+    /// What was on disk when the store was loaded or last saved; a save
+    /// merges against it if another process changed the files meanwhile.
+    base: Snapshot,
 }
 
 impl Store {
+    /// The store's syncable contents (see [`Snapshot`]).
+    pub fn snapshot(&self) -> Snapshot {
+        Snapshot {
+            buckets: self.buckets.clone(),
+            tombstones: self.tombstones.clone(),
+        }
+    }
+
     /// The directory the store reads from and writes to.
     pub fn dir(&self) -> &Path {
         &self.dir
@@ -95,7 +116,7 @@ impl Store {
 }
 
 #[cfg(test)]
-mod test_util {
+pub(crate) mod test_util {
     use std::path::PathBuf;
 
     /// A unique directory under the system temp dir, deleted on drop.

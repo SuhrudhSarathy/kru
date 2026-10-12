@@ -71,9 +71,12 @@ impl Store {
             self.state.active = None;
         }
         let bucket = self.buckets.remove(&id).expect("id comes from the map");
+        let now = jiff::Timestamp::now();
         for task in bucket.iter() {
             self.delete_md_of(task);
+            self.tombstones.tasks.insert(task.header.id, now);
         }
+        self.tombstones.buckets.insert(id, now);
         Ok(bucket)
     }
 

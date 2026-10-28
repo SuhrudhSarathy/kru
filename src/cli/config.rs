@@ -4,9 +4,11 @@
 
 use anyhow::Result;
 use clap::Subcommand;
+use clap_complete::ArgValueCompleter;
 use kru::config::{Config, Source};
 use serde_json::{Map, Value, json};
 
+use super::complete;
 use super::json as out;
 
 #[derive(Subcommand)]
@@ -16,13 +18,23 @@ pub enum ConfigCommand {
     List,
 
     /// Show one setting
-    Get { key: String },
+    Get {
+        #[arg(add = ArgValueCompleter::new(complete::config_keys))]
+        key: String,
+    },
 
     /// Change a setting (keys: dir, editor)
-    Set { key: String, value: String },
+    Set {
+        #[arg(add = ArgValueCompleter::new(complete::config_keys))]
+        key: String,
+        value: String,
+    },
 
     /// Remove a setting, so it falls back to the environment or default
-    Unset { key: String },
+    Unset {
+        #[arg(add = ArgValueCompleter::new(complete::config_keys))]
+        key: String,
+    },
 
     /// Print the config file's path
     Path,

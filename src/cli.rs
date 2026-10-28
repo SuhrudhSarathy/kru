@@ -2,6 +2,7 @@
 //! [`kru::Store`]; no task or bucket logic lives here.
 
 mod bucket;
+mod complete;
 pub mod config;
 mod fields;
 mod json;
@@ -73,14 +74,19 @@ impl Command {
     }
 }
 
+/// The full command, including the task field flags that `Cli` doesn't
+/// declare itself. Shell completion uses this too.
+pub fn command() -> clap::Command {
+    Cli::command().mut_subcommand("task", |task| {
+        task.mut_subcommand("add", fields::add_flags)
+            .mut_subcommand("mark", fields::add_flags)
+    })
+}
+
 /// Parses the command line: the command, plus any task field flags
 /// (`--priority high`, …) given to `task add` or `task mark`.
 pub fn parse() -> (Cli, Vec<FieldInput>) {
-    let command = Cli::command().mut_subcommand("task", |task| {
-        task.mut_subcommand("add", fields::add_flags)
-            .mut_subcommand("mark", fields::add_flags)
-    });
-    let matches = command.get_matches();
+    let matches = command().get_matches();
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|err| err.exit());
     let inputs = matches
         .subcommand_matches("task")

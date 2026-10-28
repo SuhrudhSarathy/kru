@@ -54,6 +54,18 @@ With [Rust](https://rustup.rs) 1.89 or newer:
 cargo install --git https://github.com/SuhrudhSarathy/kru --locked
 ```
 
+### Shell completion
+
+Tab completes commands and flags, plus your bucket names, task numbers and
+setting names (e.g. `kru task list -b <Tab>`). Add the line for your shell to
+its startup file:
+
+```sh
+source <(COMPLETE=zsh kru)          # ~/.zshrc
+source <(COMPLETE=bash kru)         # ~/.bashrc
+COMPLETE=fish kru | source          # ~/.config/fish/config.fish
+```
+
 ## Getting started
 
 `kru --help` lists the commands; `kru` on its own opens the terminal UI.

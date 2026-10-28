@@ -1,8 +1,9 @@
 use anyhow::{Result, bail};
 use clap::Subcommand;
+use clap_complete::ArgValueCompleter;
 use kru::{Error, Store};
 
-use super::{json, output};
+use super::{complete, json, output};
 
 #[derive(Subcommand)]
 pub enum BucketCommand {
@@ -14,14 +15,22 @@ pub enum BucketCommand {
     List,
 
     /// Make a bucket the default for `kru task add`
-    Use { name: String },
+    Use {
+        #[arg(add = ArgValueCompleter::new(complete::buckets))]
+        name: String,
+    },
 
     /// Rename a bucket
-    Rename { name: String, new_name: String },
+    Rename {
+        #[arg(add = ArgValueCompleter::new(complete::buckets))]
+        name: String,
+        new_name: String,
+    },
 
     /// Remove a bucket and all of its tasks
     #[command(visible_alias = "rm")]
     Remove {
+        #[arg(add = ArgValueCompleter::new(complete::buckets))]
         name: String,
 
         /// Remove it even if it still has open tasks

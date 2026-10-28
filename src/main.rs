@@ -8,6 +8,9 @@ use kru::Store;
 use kru::config::Config;
 
 fn main() -> anyhow::Result<()> {
+    // Answers the shell's completion requests (`COMPLETE=zsh kru …`) and exits.
+    clap_complete::CompleteEnv::with_factory(cli::command).complete();
+
     let (cli, fields) = cli::parse();
     if cli.json && cli.command.is_none() {
         bail!("--json needs a command, e.g. `kru task list --json`");

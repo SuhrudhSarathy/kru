@@ -2,12 +2,13 @@ use std::io::{self, IsTerminal, Write};
 
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
+use clap_complete::ArgValueCompleter;
 use kru::Store;
 use kru::config::Config;
 use kru::task::{Priority, Status, Task};
 use uuid::Uuid;
 
-use super::{FieldInput, json, output};
+use super::{FieldInput, complete, json, output};
 
 #[derive(Subcommand)]
 pub enum TaskCommand {
@@ -15,7 +16,7 @@ pub enum TaskCommand {
     /// the flags below; a description is required.
     Add {
         /// Bucket to add to [default: the active bucket]
-        #[arg(short, long)]
+        #[arg(short, long, add = ArgValueCompleter::new(complete::buckets))]
         bucket: Option<String>,
     },
 
@@ -25,20 +26,20 @@ pub enum TaskCommand {
 
     /// Show every detail of a task
     Show {
-        #[arg(help = TASK_HELP)]
+        #[arg(help = TASK_HELP, add = ArgValueCompleter::new(complete::tasks))]
         task: String,
     },
 
     /// Change a task's fields with the flags below
     #[command(visible_alias = "edit")]
     Mark {
-        #[arg(help = TASK_HELP)]
+        #[arg(help = TASK_HELP, add = ArgValueCompleter::new(complete::tasks))]
         task: String,
     },
 
     /// Show, add to or replace a task's context (extra notes)
     Ctx {
-        #[arg(help = TASK_HELP)]
+        #[arg(help = TASK_HELP, add = ArgValueCompleter::new(complete::tasks))]
         task: String,
 
         /// New context, replacing all of the old (asks first unless --force)
@@ -56,7 +57,7 @@ pub enum TaskCommand {
 
     /// Open a task's markdown notes file in your editor, creating it if needed
     Md {
-        #[arg(help = TASK_HELP)]
+        #[arg(help = TASK_HELP, add = ArgValueCompleter::new(complete::tasks))]
         task: String,
 
         /// Print the file's path instead of opening it (implied by --json)
@@ -74,25 +75,25 @@ pub enum TaskCommand {
 
     /// Mark one or more tasks as done
     Done {
-        #[arg(required = true, help = TASKS_HELP)]
+        #[arg(required = true, help = TASKS_HELP, add = ArgValueCompleter::new(complete::open_tasks))]
         tasks: Vec<String>,
     },
 
     /// Move a task to another bucket
     #[command(visible_alias = "mv")]
     Move {
-        #[arg(help = TASK_HELP)]
+        #[arg(help = TASK_HELP, add = ArgValueCompleter::new(complete::tasks))]
         task: String,
 
         /// Destination bucket
-        #[arg(short, long)]
+        #[arg(short, long, add = ArgValueCompleter::new(complete::buckets))]
         bucket: String,
     },
 
     /// Remove one or more tasks
     #[command(visible_alias = "rm")]
     Remove {
-        #[arg(required = true, help = TASKS_HELP)]
+        #[arg(required = true, help = TASKS_HELP, add = ArgValueCompleter::new(complete::tasks))]
         tasks: Vec<String>,
     },
 }
@@ -110,7 +111,7 @@ const TASKS_HELP: &str = "Task numbers or ids (or the start of ids)";
 #[derive(Args)]
 pub struct ListArgs {
     /// Only tasks in this bucket
-    #[arg(short, long)]
+    #[arg(short, long, add = ArgValueCompleter::new(complete::buckets))]
     bucket: Option<String>,
 
     /// Only tasks with this status

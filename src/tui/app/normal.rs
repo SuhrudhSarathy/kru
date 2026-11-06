@@ -147,9 +147,8 @@ impl App {
             }
             Action::OpenMd => {
                 let (id, _) = self.require_selected()?;
-                let (path, _) = self.store.attach_md(id)?;
+                self.open_file = Some(self.store.begin_notes(id)?);
                 self.store.save()?;
-                self.open_file = Some(path);
             }
             Action::Remove => {
                 let (id, label) = self.require_selected()?;

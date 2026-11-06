@@ -16,9 +16,8 @@ mod prompt;
 mod select;
 mod text;
 
-use std::path::PathBuf;
-
 use kru::Store;
+use kru::store::NotesEdit;
 use uuid::Uuid;
 
 pub use confirm::Pending;
@@ -112,7 +111,7 @@ pub struct App {
     pub expanded: Option<Uuid>,
     /// A file to open in the editor; the event loop takes it, suspends the
     /// TUI while the editor runs, then calls [`App::editor_closed`].
-    pub open_file: Option<PathBuf>,
+    pub open_file: Option<NotesEdit>,
     /// Set by the sync key; the event loop syncs, then reloads the store.
     pub sync_requested: bool,
     pub message: Option<Message>,
@@ -184,11 +183,14 @@ impl App {
         }
     }
 
-    /// Reports how editing [`App::open_file`] went.
-    pub fn editor_closed(&mut self, result: std::result::Result<(), String>) {
-        match result {
-            Ok(()) => self.info("Closed the notes file"),
-            Err(err) => self.error(err),
+    /// Takes back notes opened for the editor (re-encrypting private ones
+    /// and deleting their temporary copy) and reports how it went.
+    pub fn editor_closed(&mut self, edit: NotesEdit, result: std::result::Result<(), String>) {
+        let ended = self.store.end_notes(edit).and_then(|()| self.store.save());
+        match (result, ended) {
+            (Err(err), _) => self.error(err),
+            (Ok(()), Err(err)) => self.error(format!("Couldn't save the notes: {err}")),
+            (Ok(()), Ok(())) => self.info("Closed the notes"),
         }
     }
 

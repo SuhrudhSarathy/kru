@@ -10,6 +10,11 @@ pub struct Bucket {
     pub header: Header,
     pub name: String,
     tasks: BTreeMap<Uuid, Task>,
+    /// Notes of tasks in a private bucket, by task id. They're kept here,
+    /// inside the encrypted bucket, instead of in `notes/<id>.md`. Always
+    /// empty (and not written) for plain buckets.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    notes: BTreeMap<Uuid, String>,
 }
 
 impl Bucket {
@@ -19,6 +24,7 @@ impl Bucket {
             header: Header::new(),
             name: name.into(),
             tasks: BTreeMap::new(),
+            notes: BTreeMap::new(),
         }
     }
 
@@ -41,7 +47,21 @@ impl Bucket {
 
     /// Removes a task by id, returning it if it existed.
     pub fn remove(&mut self, id: Uuid) -> Option<Task> {
+        self.notes.remove(&id);
         self.tasks.remove(&id)
+    }
+
+    /// A task's notes, if this (private) bucket holds them.
+    pub(crate) fn notes(&self, task: Uuid) -> Option<&str> {
+        self.notes.get(&task).map(String::as_str)
+    }
+
+    /// Stores a task's notes in this (private) bucket; `None` removes them.
+    pub(crate) fn set_notes(&mut self, task: Uuid, text: Option<String>) {
+        match text {
+            Some(text) => self.notes.insert(task, text),
+            None => self.notes.remove(&task),
+        };
     }
 
     /// Keeps only the tasks matching `keep`; returns how many were removed.

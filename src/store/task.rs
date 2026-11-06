@@ -131,12 +131,15 @@ impl Store {
     pub fn move_task(&mut self, id: Uuid, to_bucket: &str) -> Result<()> {
         let to = self.bucket_id(to_bucket)?;
         let from = self.bucket_of(id)?;
-        if self.is_private(to) && self.find(id)?.task.mdpath.is_some() {
-            return Err(Error::PrivateNotes);
-        }
         if from != to {
+            // Notes travel with the task: into a private bucket's encrypted
+            // notes, or back out to a file.
+            let notes = self.take_notes(id)?;
             let task = self.buckets.get_mut(&from).unwrap().remove(id).unwrap();
             self.buckets.get_mut(&to).unwrap().add(task);
+            if let Some(text) = notes {
+                self.put_notes(id, text)?;
+            }
         }
         Ok(())
     }
@@ -151,7 +154,7 @@ impl Store {
     }
 
     /// Id of the bucket containing the task.
-    fn bucket_of(&self, task: Uuid) -> Result<Uuid> {
+    pub(super) fn bucket_of(&self, task: Uuid) -> Result<Uuid> {
         self.buckets
             .values()
             .find(|bucket| bucket.get(task).is_some())

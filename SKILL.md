@@ -207,7 +207,9 @@ private bucket and that they can run the command themselves with `--unlock`.
   existing bucket private) ask for a new password; only a person can run them.
 - `task add` without `--bucket` fails if the active bucket is private and
   locked.
-- Notes files (`task md`) aren't available for tasks in private buckets.
+- Notes of tasks in private buckets are encrypted with the bucket, not
+  kept as a file: `task md --json` / `--path` refuse them, and they only
+  open in the user's editor.
 
 ## Syncing across devices
 
@@ -329,7 +331,7 @@ Changing `dir` doesn't move existing data.
 | `Error: bucket \`…\` is private and locked; unlock it first` | 1 | the active bucket is private: pass `-b <bucket>`, or ask the user |
 | `Error: a password can only be entered on a terminal` | 1 | `--unlock` needs a person at a terminal; agents can't use it |
 | `Error: wrong password` | 1 | only the user can retry |
-| `Error: notes files aren't available for tasks in private buckets yet …` | 1 | keep notes in `ctx` instead (it's encrypted with the bucket) |
+| `Error: notes of tasks in private buckets are kept encrypted, not as a file; …` | 1 | the task is in a private bucket; only the user can open its notes |
 | `error: invalid value 'x' for '--status …'` | 2 | bad argument; see `--help` |
 
 ## Example session

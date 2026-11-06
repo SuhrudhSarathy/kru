@@ -72,7 +72,7 @@ pub enum Error {
     BucketLocked(String),
 
     #[error(
-        "notes files aren't available for tasks in private buckets yet (they'd be stored unencrypted)"
+        "notes of tasks in private buckets are kept encrypted, not as a file; open them in your editor with `kru task md <task> --unlock`"
     )]
     PrivateNotes,
 

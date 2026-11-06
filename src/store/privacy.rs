@@ -32,8 +32,8 @@ impl Store {
     }
 
     /// Makes an existing bucket private, protected by `password`. It stays
-    /// unlocked for this session. Fails if any of its tasks has a notes
-    /// file, since those can't be encrypted yet.
+    /// unlocked for this session. Its tasks' notes files move inside the
+    /// encrypted bucket, and the plain files are deleted.
     pub fn make_private(&mut self, name: &str, password: &str) -> Result<()> {
         self.make_private_with(name, password, Kdf::new()?)
     }
@@ -43,16 +43,21 @@ impl Store {
         if self.is_private(id) {
             return Ok(());
         }
+        let key = Key::derive(password, &kdf)?;
+        let files = self.read_notes_files(id)?;
         let bucket = self.buckets.get_mut(&id).expect("id comes from the map");
-        if bucket.iter().any(|task| task.mdpath.is_some()) {
-            return Err(Error::PrivateNotes);
+        for (task, (_, text)) in &files {
+            bucket.set_notes(*task, Some(text.clone()));
         }
         bucket.header = bucket.header.update_edited();
-        let key = Key::derive(password, &kdf)?;
         let sealed = privacy::seal(bucket, &key)?;
         let sealed_as = bucket.clone();
         self.sealed.insert(id, sealed);
         self.unlocked.insert(id, Unlocked { key, sealed_as });
+        // The notes are safely inside the bucket; drop the plain copies.
+        for (path, _) in files.into_values() {
+            let _ = std::fs::remove_file(path);
+        }
         Ok(())
     }
 
@@ -250,8 +255,52 @@ mod tests {
         assert_eq!(locked.active_bucket().unwrap().header.id, id);
     }
 
+    /// Every file under `dir`, as text (lossy), to check nothing leaks.
+    fn everything_on_disk(dir: &std::path::Path) -> String {
+        let mut all = String::new();
+        let mut stack = vec![dir.to_path_buf()];
+        while let Some(path) = stack.pop() {
+            if path.is_dir() {
+                stack.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+            } else {
+                all.push_str(&String::from_utf8_lossy(&std::fs::read(&path).unwrap()));
+            }
+        }
+        all
+    }
+
     #[test]
-    fn notes_files_are_refused_in_private_buckets() {
+    fn making_a_bucket_private_encrypts_its_notes_files() {
+        let dir = TempDir::new();
+        let mut store = Store::open(&dir.0).unwrap();
+        store.add_bucket("work").unwrap();
+        let id = store.add_task(None, Task::new("plan")).unwrap();
+        let (path, _) = store.attach_md(id).unwrap();
+        std::fs::write(&path, "# plan\n\nthe launch code is 1234\n").unwrap();
+        store.make_private_with("work", "pw", cheap_kdf()).unwrap();
+        store.save().unwrap();
+
+        assert!(!path.exists(), "the plain notes file is gone");
+        assert!(!everything_on_disk(&dir.0).contains("launch code"));
+
+        let mut reopened = Store::open(&dir.0).unwrap();
+        reopened.unlock("pw").unwrap();
+        assert_eq!(
+            reopened.md_path(id).unwrap(),
+            None,
+            "private notes have no file"
+        );
+        let edit = reopened.begin_notes(id).unwrap();
+        assert!(
+            std::fs::read_to_string(&edit.path)
+                .unwrap()
+                .contains("launch code is 1234")
+        );
+        reopened.end_notes(edit).unwrap();
+    }
+
+    #[test]
+    fn private_notes_are_edited_through_a_temporary_copy() {
         let dir = TempDir::new();
         let (mut store, _) = private_store(&dir);
         let secret = store
@@ -263,6 +312,39 @@ mod tests {
             .id;
         assert!(matches!(store.attach_md(secret), Err(Error::PrivateNotes)));
 
+        let edit = store.begin_notes(secret).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&edit.path).unwrap(),
+            "# a secret\n\n"
+        );
+        std::fs::write(&edit.path, "# a secret\n\nwritten in the editor\n").unwrap();
+        let scratch = edit.path.parent().unwrap().to_path_buf();
+        // Editors leave swap and backup files; they go too.
+        std::fs::write(scratch.join(".swp"), "stray").unwrap();
+        store.end_notes(edit).unwrap();
+        assert!(!scratch.exists());
+        store.save().unwrap();
+
+        assert!(!everything_on_disk(&dir.0).contains("written in the editor"));
+        let mut reopened = Store::open(&dir.0).unwrap();
+        reopened.unlock("pw").unwrap();
+        let again = reopened.begin_notes(secret).unwrap();
+        assert!(
+            std::fs::read_to_string(&again.path)
+                .unwrap()
+                .contains("written in the editor")
+        );
+        reopened.end_notes(again).unwrap();
+
+        // Deleting private notes.
+        assert!(reopened.remove_md(secret).unwrap());
+        assert!(reopened.find(secret).unwrap().task.mdpath.is_none());
+    }
+
+    #[test]
+    fn notes_move_with_their_task_in_and_out_of_private_buckets() {
+        let dir = TempDir::new();
+        let (mut store, _) = private_store(&dir);
         let milk = store
             .entries()
             .find(|e| e.task.description == "buy milk")
@@ -270,15 +352,21 @@ mod tests {
             .task
             .header
             .id;
-        store.attach_md(milk).unwrap();
-        assert!(matches!(
-            store.move_task(milk, "diary"),
-            Err(Error::PrivateNotes)
-        ));
-        assert!(matches!(
-            store.make_private_with("home", "pw", cheap_kdf()),
-            Err(Error::PrivateNotes)
-        ));
+        let (path, _) = store.attach_md(milk).unwrap();
+        std::fs::write(&path, "full fat").unwrap();
+
+        store.move_task(milk, "diary").unwrap();
+        assert!(!path.exists(), "encrypted on the way in");
+        let edit = store.begin_notes(milk).unwrap();
+        assert_eq!(std::fs::read_to_string(&edit.path).unwrap(), "full fat");
+        store.end_notes(edit).unwrap();
+
+        store.move_task(milk, "home").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "full fat",
+            "a file again"
+        );
     }
 
     #[test]

@@ -43,6 +43,7 @@ use crate::task::Task;
 use crate::utils::error::{Error, Result};
 use directories::ProjectDirs;
 
+pub use notes::NotesEdit;
 pub use tombstones::{TOMBSTONE_RETENTION, Tombstones};
 
 use privacy::Unlocked;

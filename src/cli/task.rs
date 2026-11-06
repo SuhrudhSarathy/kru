@@ -252,15 +252,23 @@ pub fn run(
             force,
         } => {
             let id = store.resolve(&task)?;
-            let num = store.find(id)?.num;
+            let entry = store.find(id)?;
+            let num = entry.num;
+            let private = store.is_private(entry.bucket.header.id);
             if remove {
-                let Some(file) = store.md_path(id)? else {
+                if entry.task.mdpath.is_none() {
                     bail!("#{num} has no markdown file");
+                }
+                // Private notes have no file; name what goes instead.
+                let file = store.md_path(id)?;
+                let what = match &file {
+                    Some(file) => file.display().to_string(),
+                    None => format!("the notes of #{num}"),
                 };
                 if !force {
                     require_terminal("deleting the markdown file", as_json)?;
-                    if !ask(&format!("Delete {}?", file.display()))? {
-                        println!("Kept {}.", file.display());
+                    if !ask(&format!("Delete {what}?"))? {
+                        println!("Kept {what}.");
                         return Ok(());
                     }
                 }
@@ -270,8 +278,23 @@ pub fn run(
                     let task = json::entry(&store.find(id)?);
                     json::print(serde_json::json!({ "task": task, "removed": file }));
                 } else {
-                    println!("Deleted {}.", file.display());
+                    println!("Deleted {what}.");
                 }
+                return Ok(());
+            }
+
+            if private {
+                // Encrypted notes have no lasting path to hand out; they
+                // only open in the editor, through a temporary copy.
+                if path || as_json {
+                    return Err(kru::Error::PrivateNotes.into());
+                }
+                let edit = store.begin_notes(id)?;
+                let edited = crate::editor::open(&Config::load()?.editor(), &edit.path);
+                store.end_notes(edit)?;
+                store.save()?;
+                edited?;
+                println!("Saved the notes of #{num} (encrypted).");
                 return Ok(());
             }
 

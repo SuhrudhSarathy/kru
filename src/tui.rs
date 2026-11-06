@@ -81,11 +81,11 @@ fn event_loop(
         {
             app.update(action);
         }
-        if let Some(path) = app.open_file.take() {
+        if let Some(edit) = app.open_file.take() {
             terminal::leave();
-            let result = crate::editor::open(editor, &path).map_err(|err| format!("{err:#}"));
+            let result = crate::editor::open(editor, &edit.path).map_err(|err| format!("{err:#}"));
             *terminal = terminal::enter();
-            app.editor_closed(result);
+            app.editor_closed(edit, result);
         }
         if std::mem::take(&mut app.sync_requested) {
             if !sync::is_set_up(dir) {
@@ -511,9 +511,9 @@ mod tests {
 
         // o creates the file and asks the event loop to open it.
         press(&mut app, KeyCode::Char('o'));
-        let path = app.open_file.take().expect("a file to open");
+        let edit = app.open_file.take().expect("a file to open");
         assert_eq!(
-            std::fs::read_to_string(&path).unwrap(),
+            std::fs::read_to_string(&edit.path).unwrap(),
             "# Fix the sink\n\n"
         );
         let id = task(&app, 1).header.id;
@@ -524,8 +524,43 @@ mod tests {
         let screen_text = screen(&app);
         assert!(screen_text.contains("Markdown"), "{screen_text}");
 
-        app.editor_closed(Err("the editor `nope` exited".into()));
+        app.editor_closed(edit, Err("the editor `nope` exited".into()));
         assert!(app.message.as_ref().unwrap().is_error);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn o_edits_private_notes_through_a_temporary_copy() {
+        let dir = std::env::temp_dir().join(format!("kru-tui-{}", uuid::Uuid::new_v4()));
+        let mut store = Store::open(&dir).unwrap();
+        store.add_private_bucket("diary", "pw").unwrap();
+        store
+            .add_task(Some("diary"), kru::task::Task::new("a secret"))
+            .unwrap();
+        store.save().unwrap();
+        let mut app = App::new(Store::open(&dir).unwrap());
+        press(&mut app, KeyCode::Char('P'));
+        type_text(&mut app, "pw");
+        app.update(Action::FocusTasks);
+
+        press(&mut app, KeyCode::Char('o'));
+        let edit = app.open_file.take().expect("a file to open");
+        assert!(!edit.path.starts_with(&dir), "the copy isn't in the store");
+        std::fs::write(&edit.path, "kept encrypted").unwrap();
+        let copy = edit.path.clone();
+        app.editor_closed(edit, Ok(()));
+        assert!(!copy.exists(), "the copy is deleted");
+
+        let mut reopened = Store::open(&dir).unwrap();
+        reopened.unlock("pw").unwrap();
+        let id = reopened.entries().next().unwrap().task.header.id;
+        let again = reopened.begin_notes(id).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&again.path).unwrap(),
+            "kept encrypted"
+        );
+        reopened.end_notes(again).unwrap();
 
         let _ = std::fs::remove_dir_all(&dir);
     }

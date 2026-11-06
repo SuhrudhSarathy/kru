@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Workflows · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="Workflows · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l" href="install.html">Install</a><a class="l" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l on" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l" href="tasks.html">Tasks & fields</a><a class="l" href="buckets.html">Buckets</a><a class="l" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l" href="private.html">Private buckets</a><a class="l" href="sync.html">Syncing</a><a class="l" href="config.html">Settings & storage</a><a class="l" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l" href="concepts.html">How it works</a><a class="l" href="library.html">Rust library</a><a class="l" href="faq.html">FAQ & troubleshooting</a><a class="l" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>Workflows</h1>
+<p class="lead">Recipes that combine the pieces. Each is self-contained.</p>
+<h2 id="a-daily-routine-with-the-tui">A daily routine with the TUI</h2>
+<ol>
+<li>Open <code>kru</code>. Tasks are already ordered most urgent first, so the top of <b>Tasks</b> is what to do next.</li>
+<li>Press <kbd>s</kbd> on what you start (<code>in-progress</code>), <kbd>space</kbd> when it's done.</li>
+<li>Capture new work with <kbd>a</kbd>; set the due date with <kbd>d</kbd> (<code>fri</code>, <code>3d</code>, <code>tomorrow</code>).</li>
+<li>Put long-running detail in notes with <kbd>o</kbd> rather than in the description.</li>
+<li>Finished tasks sit in <b>Done</b> for a week, then vanish. Reopen one with <kbd>space</kbd>.</li></ol>
+<h2 id="syncing-a-laptop-and-a-desktop">Syncing a laptop and a desktop</h2>
+<pre><code><span class="c"># once: make an EMPTY PRIVATE repo, e.g. github.com/you/my-tasks</span>
+laptop$  kru sync init git@github.com:you/my-tasks.git
+desktop$ kru sync init git@github.com:you/my-tasks.git   <span class="c"># same URL</span>
+<span class="c"># from now on</span>
+kru config set autosync on     <span class="c"># background sync after changes</span></code></pre>
+<p>If both edit the same task before syncing, kru merges field by field, and the later edit wins for a field both touched. See <a href="sync.html">Syncing</a>.</p>
+<h2 id="quick-capture-from-the-shell">Quick capture from the shell</h2>
+<pre><code>alias t='kru task add -d'
+t "Call the dentist" --due tomorrow -p medium</code></pre>
+<h2 id="show-what-s-due-in-your-prompt-or-status-bar">Show what's due in your prompt or status bar</h2>
+<pre><code><span class="c"># count of open tasks due within a day</span>
+kru task list --json | jq --arg c "$(date -u -d '+1 day' +%FT%TZ)" \
+  '[.[] | select(.due != null and .due &lt;= $c)] | length'</code></pre>
+<p>On macOS replace <code>date -u -d '+1 day'</code> with <code>date -u -v+1d</code>.</p>
+<h2 id="a-morning-reminder-with-cron">A morning reminder with cron</h2>
+<pre><code><span class="c"># crontab -e : weekdays at 9, print overdue/today tasks (mail or notify-send as you like)</span>
+0 9 * * 1-5  kru task list --json | jq -r '.[] | select(.due != null) | "\(.due[:10])  \(.description)"' | sort | head</code></pre>
+<h2 id="moving-a-project-to-its-own-bucket">Moving a project to its own bucket</h2>
+<pre><code>kru bucket add launch
+kru task list -q "launch" --json | jq -r '.[].id' | xargs -I{} kru task move {} -b launch</code></pre>
+<h2 id="keeping-sensitive-tasks-private">Keeping sensitive tasks private</h2>
+<pre><code>kru bucket add finance --private
+kru task add -b finance -d "File taxes" --unlock</code></pre>
+<p>See <a href="private.html">Private buckets</a>.</p><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/guides.html">Edit this page on GitHub</a></p><div class="pager"><a href="getting-started.html">← Getting started</a><a href="tui.html">Terminal UI →</a></div></main></div></body></html>

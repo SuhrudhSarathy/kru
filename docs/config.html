@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Settings & storage · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="Settings & storage · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l" href="install.html">Install</a><a class="l" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l" href="tasks.html">Tasks & fields</a><a class="l" href="buckets.html">Buckets</a><a class="l" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l" href="private.html">Private buckets</a><a class="l" href="sync.html">Syncing</a><a class="l on" href="config.html">Settings & storage</a><a class="l" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l" href="concepts.html">How it works</a><a class="l" href="library.html">Rust library</a><a class="l" href="faq.html">FAQ & troubleshooting</a><a class="l" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>Settings &amp; storage</h1>
+<h2 id="where-data-lives">Where data lives</h2>
+<p><code>kru path</code> prints the store directory. The first match wins:</p>
+<ol><li><code>$KRU_DIR</code></li><li>the <code>dir</code> setting</li><li>your platform's cache folder</li></ol>
+<p>Inside are plain JSON files for buckets and tasks, plus <code>notes/&lt;id&gt;.md</code> for markdown notes. Files carry a format version: an older kru refuses to touch data written by a newer one, so upgrade rather than hand-editing. Several kru processes (say a CLI call and an open TUI) can share a store safely: saves lock the store and merge what another process saved meanwhile.</p>
+<p>For a throwaway store (tests, dry runs): <code>export KRU_DIR="$(mktemp -d)"</code>.</p>
+<h2 id="settings">Settings</h2>
+<p>Stored in a JSON file in your config folder (<code>kru config path</code>; e.g. <code>~/.config/kru/config.json</code> on Linux). <code>$KRU_CONFIG</code> points elsewhere.</p>
+<table><tr><th>Key</th><th>Meaning</th><th>Effective value</th></tr>
+<tr><td><code>dir</code></td><td>Where tasks are stored</td><td><code>$KRU_DIR</code>, else setting, else cache folder</td></tr>
+<tr><td><code>editor</code></td><td>Command to open files, e.g. <code>nvim</code>, <code>code --wait</code></td><td>setting, else <code>$VISUAL</code>, <code>$EDITOR</code>, then <code>vi</code> (<code>notepad</code> on Windows)</td></tr>
+<tr><td><code>autosync</code></td><td><code>on</code>/<code>off</code>: sync in the background</td><td>setting, else <code>off</code></td></tr></table>
+<pre><code>kru config                       <span class="c"># everything, with where each value came from</span>
+kru config set editor "code --wait"
+kru config set autosync on
+kru config unset editor</code></pre>
+<p>Changing <code>dir</code> doesn't move existing data.</p>
+<h2 id="environment-variables">Environment variables</h2>
+<table><tr><th>Variable</th><th>Purpose</th></tr>
+<tr><td><code>KRU_DIR</code></td><td>Override the store directory</td></tr>
+<tr><td><code>KRU_CONFIG</code></td><td>Override the config file path</td></tr>
+<tr><td><code>VISUAL</code>, <code>EDITOR</code></td><td>Fallback editor</td></tr>
+<tr><td><code>COMPLETE</code></td><td>Generate shell completions (<a href="install.html">see Install</a>)</td></tr></table><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/config.html">Edit this page on GitHub</a></p><div class="pager"><a href="sync.html">← Syncing</a><a href="agents.html">Scripts & agents →</a></div></main></div></body></html>

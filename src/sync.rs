@@ -89,9 +89,16 @@ pub fn init(dir: &Path, remote: &str, interactive: bool) -> Result<Report> {
         git.run(&["init", "-q"])?;
         git.run(&["symbolic-ref", "HEAD", &format!("refs/heads/{BRANCH}")])?;
     }
+    // The store's files must come back from git byte for byte: on Windows,
+    // git's default line-ending conversion would turn notes' LF into CRLF.
+    git.run(&["config", "core.autocrlf", "false"])?;
     let ignore = dir.join(".gitignore");
     if !ignore.exists() {
         fs::write(&ignore, DEVICE_LOCAL).map_err(|source| io(&ignore, source))?;
+    }
+    let attributes = dir.join(".gitattributes");
+    if !attributes.exists() {
+        fs::write(&attributes, "* -text\n").map_err(|source| io(&attributes, source))?;
     }
     match git.run(&["remote", "get-url", "origin"]) {
         Ok(url) if url == remote => {}

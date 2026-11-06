@@ -213,12 +213,15 @@ fn write_file(path: &Path, text: &str) -> Result<()> {
 /// for decrypted notes while they're edited.
 fn private_folder() -> Result<PathBuf> {
     let path = std::env::temp_dir().join(format!("kru-notes-{}", Uuid::now_v7()));
-    let mut builder = fs::DirBuilder::new();
     #[cfg(unix)]
-    {
+    let builder = {
         use std::os::unix::fs::DirBuilderExt;
+        let mut builder = fs::DirBuilder::new();
         builder.mode(0o700);
-    }
+        builder
+    };
+    #[cfg(not(unix))]
+    let builder = fs::DirBuilder::new();
     builder.create(&path).map_err(|source| Error::Io {
         path: path.clone(),
         source,

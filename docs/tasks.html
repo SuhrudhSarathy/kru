@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tasks & fields · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="Tasks & fields · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l" href="install.html">Install</a><a class="l" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l on" href="tasks.html">Tasks & fields</a><a class="l" href="buckets.html">Buckets</a><a class="l" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l" href="private.html">Private buckets</a><a class="l" href="sync.html">Syncing</a><a class="l" href="config.html">Settings & storage</a><a class="l" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l" href="concepts.html">How it works</a><a class="l" href="library.html">Rust library</a><a class="l" href="faq.html">FAQ & troubleshooting</a><a class="l" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>Tasks &amp; fields</h1>
+<p class="lead">What a task holds and how to set it.</p>
+<h2 id="fields">Fields</h2>
+<table><tr><th>Field</th><th>Flag</th><th>Values</th></tr>
+<tr><td>description</td><td><code>-d</code>, <code>--description</code></td><td>One line of text, required, up to 500 characters</td></tr>
+<tr><td>ctx</td><td><code>-c</code>, <code>--ctx</code></td><td>Extra context; may span lines; up to 10,000 characters</td></tr>
+<tr><td>priority</td><td><code>-p</code>, <code>--priority</code></td><td><code>low</code>, <code>medium</code>, <code>high</code> (also <code>l</code>, <code>m</code>/<code>med</code>, <code>h</code>)</td></tr>
+<tr><td>status</td><td><code>-s</code>, <code>--status</code></td><td><code>todo</code>, <code>in-progress</code>, <code>done</code> (also <code>doing</code>, <code>wip</code>)</td></tr>
+<tr><td>due</td><td><code>--due</code></td><td>See below; <code>none</code> clears it</td></tr></table>
+<p>Kru also records <code>created</code>, <code>edited</code> and <code>completed</code> times, a stable <code>id</code>, and an optional notes file. Values are case-insensitive. Input is tidied: control characters are dropped and runs of spaces collapse.</p>
+<h2 id="due-dates">Due dates</h2>
+<p>All parsed in your local time zone. A date without a time means the <b>end of that day</b>.</p>
+<table><tr><th>You type</th><th>Meaning</th></tr>
+<tr><td><code>today</code>, <code>tomorrow</code></td><td>End of that day</td></tr>
+<tr><td><code>mon</code> … <code>sunday</code></td><td>End of the next such weekday</td></tr>
+<tr><td><code>2026-10-12</code></td><td>End of that date</td></tr>
+<tr><td><code>"2026-10-12 17:00"</code></td><td>That exact time</td></tr>
+<tr><td><code>3d</code>, <code>+2h</code>, <code>1w</code>, <code>2 days</code></td><td>Now plus that span</td></tr>
+<tr><td><code>none</code>, <code>clear</code>, <code>-</code></td><td>No due date</td></tr></table>
+<h2 id="ordering">Ordering</h2>
+<p>Lists are ordered most urgent first: open before done, then earliest due date (no due date last), then higher priority.</p>
+<h2 id="identifying-a-task">Identifying a task</h2>
+<p>Commands take a <code>&lt;task&gt;</code> argument. It can be:</p>
+<ul><li>its <b>number</b> (digits only), as shown in <code>task list</code>. Numbers run bucket by bucket and can shift.</li>
+<li>its <b>id</b> (UUID), or a unique start of it. Ids never change, even across devices.</li></ul>
+<h2 id="context-vs-markdown-notes">Context vs. markdown notes</h2>
+<p><b>Context</b> is a short text field on the task. Append with <code>kru task ctx 1 -a "text"</code>; replacing it asks for confirmation (or needs <code>--force</code>).</p>
+<p><b>Markdown notes</b> are for anything longer: <code>kru task md 1</code> creates <code>notes/&lt;id&gt;.md</code> in your store (starting with the description as a heading) and opens it in your editor. <code>--path</code> prints the path instead, <code>--remove</code> deletes the file. Removing or pruning the task removes its notes too. Notes sync as text.</p>
+<h2 id="done-tasks-and-pruning">Done tasks and pruning</h2>
+<p>Tasks done more than <b>7 days</b> ago are deleted whenever kru starts. Run it yourself with <code>kru prune --days N</code>.</p><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/tasks.html">Edit this page on GitHub</a></p><div class="pager"><a href="tui.html">← Terminal UI</a><a href="buckets.html">Buckets →</a></div></main></div></body></html>

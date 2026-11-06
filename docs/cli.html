@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CLI reference · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="CLI reference · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l" href="install.html">Install</a><a class="l" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l" href="tasks.html">Tasks & fields</a><a class="l" href="buckets.html">Buckets</a><a class="l on" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l" href="private.html">Private buckets</a><a class="l" href="sync.html">Syncing</a><a class="l" href="config.html">Settings & storage</a><a class="l" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l" href="concepts.html">How it works</a><a class="l" href="library.html">Rust library</a><a class="l" href="faq.html">FAQ & troubleshooting</a><a class="l" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>CLI reference</h1>
+<p class="lead">Every command. <code>kru &lt;command&gt; --help</code> is always the authority.</p>
+<h2 id="global-options">Global options</h2>
+<table><tr><th>Flag</th><th>Meaning</th></tr>
+<tr><td><code>--json</code></td><td>Print JSON instead of text. Works anywhere on the command line.</td></tr>
+<tr><td><code>--unlock</code></td><td>Ask for the password of <a href="private.html">private buckets</a> and show them for this command</td></tr>
+<tr><td><code>-h</code>, <code>--help</code></td><td>Help</td></tr>
+<tr><td><code>-V</code>, <code>--version</code></td><td>Version</td></tr></table>
+<p><code>kru</code> with no command opens the <a href="tui.html">TUI</a> (with <code>--json</code> it is an error instead).</p>
+<h2 id="kru-task">kru task</h2>
+<table><tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>task add</code></td><td>Add a task. <code>-d</code> required; <code>-b</code> bucket (default: active); plus <code>-c -p -s --due</code></td></tr>
+<tr><td><code>task list</code> <i>(ls)</i></td><td>List tasks. Filters: <code>-b</code> bucket, <code>-s</code> status, <code>-p</code> priority, <code>-q</code> text, <code>-a</code> include done</td></tr>
+<tr><td><code>task show &lt;task&gt;</code></td><td>Every detail of a task</td></tr>
+<tr><td><code>task mark &lt;task&gt;</code> <i>(edit)</i></td><td>Change fields with <code>-d -c -p -s --due</code>. All-or-nothing; setting an unchanged value is a no-op</td></tr>
+<tr><td><code>task ctx &lt;task&gt; [text]</code></td><td>Show context; <code>-a text</code> appends a line; <code>text</code> replaces (asks unless <code>-f</code>)</td></tr>
+<tr><td><code>task md &lt;task&gt;</code></td><td>Open the markdown notes in your editor (creating them). <code>--path</code> prints the path; <code>--remove</code> deletes (asks unless <code>-f</code>)</td></tr>
+<tr><td><code>task done &lt;task&gt;…</code></td><td>Mark one or more tasks done</td></tr>
+<tr><td><code>task move &lt;task&gt; -b &lt;bucket&gt;</code> <i>(mv)</i></td><td>Move to another bucket</td></tr>
+<tr><td><code>task remove &lt;task&gt;…</code> <i>(rm)</i></td><td>Remove tasks</td></tr></table>
+<h2 id="kru-bucket">kru bucket</h2>
+<table><tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>bucket add &lt;name&gt; [--private]</code></td><td>Create a bucket (optionally encrypted)</td></tr>
+<tr><td><code>bucket private &lt;name&gt;</code></td><td>Make an existing bucket private</td></tr>
+<tr><td><code>bucket list</code> <i>(ls)</i></td><td>List buckets; <code>*</code> marks the active one</td></tr>
+<tr><td><code>bucket use &lt;name&gt;</code></td><td>Make it the default for <code>task add</code></td></tr>
+<tr><td><code>bucket rename &lt;name&gt; &lt;new&gt;</code></td><td>Rename</td></tr>
+<tr><td><code>bucket remove &lt;name&gt; [--force]</code> <i>(rm)</i></td><td>Remove a bucket and its tasks</td></tr></table>
+<h2 id="kru-sync">kru sync</h2>
+<table><tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>sync</code></td><td>Commit, fetch, merge and push</td></tr>
+<tr><td><code>sync init &lt;remote&gt;</code></td><td>Set up syncing with a git remote, then sync</td></tr>
+<tr><td><code>sync status</code></td><td>Where syncing stands, without touching the network</td></tr></table>
+<h2 id="kru-config">kru config</h2>
+<table><tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>config</code> / <code>config list</code></td><td>Every setting, its value and its source</td></tr>
+<tr><td><code>config get &lt;key&gt;</code></td><td>One setting</td></tr>
+<tr><td><code>config set &lt;key&gt; &lt;value&gt;</code></td><td>Change a setting</td></tr>
+<tr><td><code>config unset &lt;key&gt;</code></td><td>Fall back to env or default</td></tr>
+<tr><td><code>config path</code></td><td>The config file's path</td></tr></table>
+<h2 id="other">Other</h2>
+<table><tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>prune [--days N]</code></td><td>Delete done tasks completed more than N days ago (default 7)</td></tr>
+<tr><td><code>path</code></td><td>Print where kru stores its data</td></tr></table>
+<h2 id="exit-codes">Exit codes</h2>
+<table><tr><th>Code</th><th>Meaning</th></tr>
+<tr><td><code>0</code></td><td>Success; JSON (with <code>--json</code>) on stdout</td></tr>
+<tr><td><code>1</code></td><td>Failure; nothing on stdout; stderr is one line starting <code>Error:</code></td></tr>
+<tr><td><code>2</code></td><td>Bad arguments; stderr starts <code>error:</code></td></tr></table><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/cli.html">Edit this page on GitHub</a></p><div class="pager"><a href="buckets.html">← Buckets</a><a href="private.html">Private buckets →</a></div></main></div></body></html>

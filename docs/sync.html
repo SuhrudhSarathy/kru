@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Syncing · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="Syncing · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l" href="install.html">Install</a><a class="l" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l" href="tasks.html">Tasks & fields</a><a class="l" href="buckets.html">Buckets</a><a class="l" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l" href="private.html">Private buckets</a><a class="l on" href="sync.html">Syncing</a><a class="l" href="config.html">Settings & storage</a><a class="l" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l" href="concepts.html">How it works</a><a class="l" href="library.html">Rust library</a><a class="l" href="faq.html">FAQ & troubleshooting</a><a class="l" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>Syncing</h1>
+<p class="lead">Keep tasks in step across devices using any git remote.</p>
+<h2 id="set-up">Set up</h2>
+<p>Create an <b>empty private</b> repository (for example on GitHub). On each device, with the same URL:</p>
+<pre><code>kru sync init git@github.com:you/my-tasks.git</code></pre>
+<p>This turns the store directory into a git repository with an <code>origin</code> remote, writes a <code>.gitignore</code> for device-local files (<code>state.json</code>, locks), and runs a first sync. Requires <code>git</code> on your <code>PATH</code>. kru never prompts for credentials with <code>--json</code>; a remote that needs a password fails instead of waiting.</p>
+<h2 id="everyday-use">Everyday use</h2>
+<pre><code>kru sync            <span class="c"># commit local changes, fetch, merge, push</span>
+kru sync status     <span class="c"># remote, last sync, local changes, ahead/behind (no network)</span></code></pre>
+<p>In the TUI press <kbd>S</kbd>. Turn on <code>autosync</code> (<code>kru config set autosync on</code>) to sync in the background after every change and every five minutes in the TUI. Output goes to <code>sync.log</code> in the store.</p>
+<h2 id="how-merging-works">How merging works</h2>
+<p>Git moves the data and keeps history; kru does the merging. Every task and bucket has a stable uuid, so when two devices both changed things, kru does a <b>three-way merge per task and bucket</b> against their common ancestor:</p>
+<ul>
+<li>A change made on one device is taken.</li>
+<li>If the <b>same field</b> changed on both, the <b>later edit wins</b>.</li>
+<li>An edit made <i>after</i> a delete elsewhere keeps the task; a delete made after an edit removes it.</li>
+<li>Buckets with the same name are merged.</li>
+<li>Markdown notes merge as text. If both devices changed the same lines, the more recently committed file wins.</li></ul>
+<p>Each decision is reported, e.g. <code>priority: kept high over low</code>. Nothing is silently lost: git history keeps every version.</p>
+<div class="note"><p>Task <b>numbers</b> differ between devices and can shift after a sync. Ids are the same everywhere.</p></div>
+<h2 id="privacy">Privacy</h2>
+<p><a href="private.html">Private buckets</a> are encrypted before they are committed, so even your remote host only sees ciphertext for them. Other buckets are stored as readable JSON, which is why the repository should be private.</p><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/sync.html">Edit this page on GitHub</a></p><div class="pager"><a href="private.html">← Private buckets</a><a href="config.html">Settings & storage →</a></div></main></div></body></html>

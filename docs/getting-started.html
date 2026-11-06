@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Getting started · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="Getting started · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l" href="install.html">Install</a><a class="l on" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l" href="tasks.html">Tasks & fields</a><a class="l" href="buckets.html">Buckets</a><a class="l" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l" href="private.html">Private buckets</a><a class="l" href="sync.html">Syncing</a><a class="l" href="config.html">Settings & storage</a><a class="l" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l" href="concepts.html">How it works</a><a class="l" href="library.html">Rust library</a><a class="l" href="faq.html">FAQ & troubleshooting</a><a class="l" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>Getting started</h1>
+<p class="lead">A five minute tour of the everyday commands.</p>
+<h2 id="1-create-a-bucket">1. Create a bucket</h2>
+<p>Tasks live in buckets, so make one first. The first bucket you create becomes the active one.</p>
+<pre><code>$ kru bucket add work
+$ kru bucket add home
+$ kru bucket list</code></pre>
+<h2 id="2-add-tasks">2. Add tasks</h2>
+<pre><code>$ kru task add -d "Write quarterly report" -p high --due fri
+$ kru task add -d "Pay rent" -b home --due 3d -c "Landlord: Sam"</code></pre>
+<p>Without <code>-b</code>, the active bucket is used. Change it with <code>kru bucket use home</code>. See <a href="tasks.html">Tasks &amp; fields</a> for every flag and the due-date formats.</p>
+<h2 id="3-look-at-them">3. Look at them</h2>
+<pre><code>$ kru task list                  <span class="c"># open tasks, most urgent first</span>
+$ kru task list -b home -p high  <span class="c"># filter</span>
+$ kru task list -q report        <span class="c"># search descriptions</span>
+$ kru task list --all            <span class="c"># include done tasks</span>
+$ kru task show 1                <span class="c"># every detail of task #1</span></code></pre>
+<h2 id="4-change-and-finish-them">4. Change and finish them</h2>
+<pre><code>$ kru task mark 1 -s in-progress -p medium
+$ kru task ctx 1 -a "Draft shared with Priya"    <span class="c"># append a note line</span>
+$ kru task md 1                                  <span class="c"># open a markdown notes file in your editor</span>
+$ kru task move 1 -b home
+$ kru task done 1 2</code></pre>
+<div class="note"><p><b>Numbers shift, ids don't.</b> Tasks are numbered bucket by bucket, so adding or removing a task can change other tasks' numbers. Anything that takes a task also accepts its <code>id</code> (or the start of it). Prefer ids in scripts.</p></div>
+<h2 id="5-use-the-terminal-ui">5. Use the terminal UI</h2>
+<pre><code>$ kru</code></pre>
+<p>Press <kbd>a</kbd> to add, <kbd>space</kbd> to toggle done, <kbd>x</kbd> to expand a task, <kbd>q</kbd> to quit. Full key list in <a href="tui.html">Terminal UI</a>.</p>
+<h2 id="6-keep-devices-in-step-optional">6. Keep devices in step (optional)</h2>
+<p>Create an empty private git repository (e.g. on GitHub), then on each device:</p>
+<pre><code>$ kru sync init git@github.com:you/my-tasks.git</code></pre>
+<p>Details in <a href="sync.html">Syncing</a>. Requires <code>git</code>.</p><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/getting-started.html">Edit this page on GitHub</a></p><div class="pager"><a href="install.html">← Install</a><a href="guides.html">Workflows →</a></div></main></div></body></html>

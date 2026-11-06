@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Changelog · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="Changelog · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l" href="install.html">Install</a><a class="l" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l" href="tasks.html">Tasks & fields</a><a class="l" href="buckets.html">Buckets</a><a class="l" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l" href="private.html">Private buckets</a><a class="l" href="sync.html">Syncing</a><a class="l" href="config.html">Settings & storage</a><a class="l" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l" href="concepts.html">How it works</a><a class="l" href="library.html">Rust library</a><a class="l" href="faq.html">FAQ & troubleshooting</a><a class="l on" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>Changelog</h1>
+<p class="lead">Release notes. Binaries for each release are on the <a href="https://github.com/SuhrudhSarathy/kru/releases">releases page</a>.</p>
+<h2 id="0-3-0">0.3.0</h2>
+<ul><li><b>Private buckets:</b> encrypt a bucket with a password (Argon2id + XChaCha20-Poly1305). Hidden unless <code>--unlock</code> is given; TUI keys <kbd>P</kbd>/<kbd>L</kbd>. Private buckets sync encrypted.</li>
+<li>Notes of tasks in private buckets are kept inside the encrypted bucket.</li></ul>
+<h2 id="since-0-1-0">Since 0.1.0</h2>
+<ul><li><b>Git sync:</b> <code>kru sync</code>, <code>sync init</code>, <code>sync status</code>; id-based three-way merge; <code>autosync</code> setting.</li>
+<li><b>Shell completion</b> for commands, flags, bucket names, task numbers and setting names.</li>
+<li><b>Markdown notes</b> per task (<code>task md</code>) and multi-line context.</li>
+<li><b>Agent support:</b> <code>--json</code> everywhere, stable ids, and <a href="agents.html"><code>SKILL.md</code></a>.</li>
+<li>Store format versioning with automatic migration.</li>
+<li>Prebuilt binaries for macOS, Linux (static) and Windows.</li></ul>
+<h2 id="0-1-0">0.1.0</h2>
+<p>First release: CLI and terminal UI with buckets, tasks, priorities, statuses and due dates.</p>
+<p><i>This page is a summary, so see GitHub releases for the authoritative list.</i></p><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/changelog.html">Edit this page on GitHub</a></p><div class="pager"><a href="faq.html">← FAQ & troubleshooting</a><span></span></div></main></div></body></html>

@@ -3,6 +3,8 @@
 Tasks, organised in buckets. A command-line tool and a terminal UI in one
 small binary.
 
+Documentation: **https://suhrudhsarathy.github.io/kru/**
+
 ## The name
 
 kru comes from the Sanskrit root कृ (*kṛ*), "to do", pronounced "kru" in

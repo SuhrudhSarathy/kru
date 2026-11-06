@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How it works · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="How it works · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l" href="install.html">Install</a><a class="l" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l" href="tasks.html">Tasks & fields</a><a class="l" href="buckets.html">Buckets</a><a class="l" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l" href="private.html">Private buckets</a><a class="l" href="sync.html">Syncing</a><a class="l" href="config.html">Settings & storage</a><a class="l" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l on" href="concepts.html">How it works</a><a class="l" href="library.html">Rust library</a><a class="l" href="faq.html">FAQ & troubleshooting</a><a class="l" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>How it works</h1>
+<p class="lead">The design behind kru, for the curious and for contributors.</p>
+<h2 id="on-disk-layout">On-disk layout</h2>
+<pre><code>&lt;store dir&gt;/
+├── state.json          <span class="c"># active bucket; device-local, not synced</span>
+├── buckets/
+│   └── &lt;bucket id&gt;.json   <span class="c"># one file per bucket, with its tasks</span>
+├── notes/
+│   └── &lt;task id&gt;.md       <span class="c"># markdown notes (plain buckets only)</span>
+├── tombstones.json     <span class="c"># what was deleted, and when (for sync)</span>
+├── .lock               <span class="c"># held while saving</span>
+└── .git/, .gitignore, sync.log   <span class="c"># only once sync is set up</span></code></pre>
+<p>Find the directory with <code>kru path</code>. Everything is readable JSON (except private buckets, which are sealed), so you can back it up with any tool.</p>
+<h2 id="identity-ids-vs-numbers">Identity: ids vs numbers</h2>
+<p>Every task and bucket has a UUID that never changes. The <b>number</b> you see (<code>#3</code>) is just its position in the display order, computed on the fly, which is why numbers shift. Sync, notes and scripts all key on ids.</p>
+<h2 id="format-versioning">Format versioning</h2>
+<p>Every file records its format <code>version</code> and the kru release that wrote it. When a file is read it is upgraded step by step in memory and written back in the current format on the next save. A file from a <b>newer</b> kru is refused instead of misread, so upgrade kru rather than editing data by hand.</p>
+<h2 id="concurrent-access">Concurrent access</h2>
+<p>Saves take a lock on the store, re-read what's on disk and merge in whatever another process saved meanwhile. A CLI call never undoes what an open TUI did, or the other way round.</p>
+<h2 id="retention">Retention</h2>
+<ul><li><b>Done tasks</b> are pruned when kru starts, after 7 days.</li>
+<li><b>Tombstones</b> (records of deletions) are kept 90 days. A device that hasn't synced for longer may bring a task that was deleted elsewhere back.</li></ul>
+<h2 id="why-git-for-sync">Why git for sync</h2>
+<p>Git already gives transport, authentication, history and hosting for free, and kru's data is small text files. kru adds the part git can't do for this data: a structured, id-based three-way merge, so two devices editing different fields of one task never produce a conflict marker. See <a href="sync.html">Syncing</a>.</p>
+<h2 id="code-map">Code map</h2>
+<table><tr><th>Path</th><th>Responsibility</th></tr>
+<tr><td><code>src/store/</code></td><td>The store: loading, saving, locking, migrations, notes, tombstones, private buckets</td></tr>
+<tr><td><code>src/task.rs</code>, <code>src/bucket.rs</code></td><td>The data types and their fields</td></tr>
+<tr><td><code>src/privacy.rs</code></td><td>Key derivation and sealing of private buckets</td></tr>
+<tr><td><code>src/sync/</code></td><td>Git wrapper, snapshots and the three-way merge</td></tr>
+<tr><td><code>src/cli/</code></td><td>Commands, argument parsing, text and JSON output, completion</td></tr>
+<tr><td><code>src/tui/</code></td><td>Event mapping, app state and rendering (ratatui)</td></tr></table>
+<p>The CLI and TUI both go through the same <code>Store</code> methods, so they behave identically.</p><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/concepts.html">Edit this page on GitHub</a></p><div class="pager"><a href="agents.html">← Scripts & agents</a><a href="library.html">Rust library →</a></div></main></div></body></html>

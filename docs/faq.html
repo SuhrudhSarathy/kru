@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FAQ & troubleshooting · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="FAQ & troubleshooting · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l" href="install.html">Install</a><a class="l" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l" href="tasks.html">Tasks & fields</a><a class="l" href="buckets.html">Buckets</a><a class="l" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l" href="private.html">Private buckets</a><a class="l" href="sync.html">Syncing</a><a class="l" href="config.html">Settings & storage</a><a class="l" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l" href="concepts.html">How it works</a><a class="l" href="library.html">Rust library</a><a class="l on" href="faq.html">FAQ & troubleshooting</a><a class="l" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>FAQ &amp; troubleshooting</h1>
+<h2 id="my-tasks-disappeared">My tasks disappeared</h2>
+<ul>
+<li><b>Private bucket?</b> Locked private buckets are completely hidden. Run the command with <code>--unlock</code>, or press <kbd>P</kbd> in the TUI.</li>
+<li><b>Different store?</b> <code>kru path</code> shows which directory is in use. A leftover <code>KRU_DIR</code> in your shell, or a changed <code>dir</code> setting, points kru somewhere else. <code>kru config</code> shows where each value comes from.</li>
+<li><b>Done tasks?</b> <code>task list</code> hides them. Add <code>--all</code>. They're deleted after 7 days.</li></ul>
+<h2 id="a-task-s-number-changed">A task's number changed</h2>
+<p>Numbers are positions, recomputed bucket by bucket. Use the task's <code>id</code> (or the start of it) whenever you need something stable. <code>kru task show 3 --json | jq -r .id</code> gets it.</p>
+<h2 id="no-bucket-given-and-no-active-bucket-set"><code>no bucket given and no active bucket set</code></h2>
+<p>Create one (<code>kru bucket add work</code>) or pick one (<code>kru bucket use work</code>), or pass <code>-b</code>.</p>
+<h2 id="macos-refuses-to-run-the-downloaded-binary">macOS refuses to run the downloaded binary</h2>
+<pre><code>xattr -d com.apple.quarantine ~/.local/bin/kru</code></pre>
+<h2 id="kru-command-not-found"><code>kru: command not found</code></h2>
+<p>Add the install folder to your <code>PATH</code>, e.g. <code>export PATH="$HOME/.local/bin:$PATH"</code> in your shell's startup file.</p>
+<h2 id="sync-problems">Sync problems</h2>
+<table><tr><th>Message</th><th>Fix</th></tr>
+<tr><td><code>git isn't installed</code></td><td>Install <code>git</code> and make sure it's on your <code>PATH</code></td></tr>
+<tr><td><code>sync isn't set up for this store</code></td><td>Run <code>kru sync init &lt;remote-url&gt;</code> first</td></tr>
+<tr><td><code>this store already syncs with &lt;url&gt;</code></td><td><code>sync init</code> was given a different remote than the one already configured</td></tr>
+<tr><td><code>git fetch failed</code> / <code>git push failed</code></td><td>Network or access problem. Nothing is lost; check your SSH key or token and retry</td></tr></table>
+<p>A background sync (autosync) logs to <code>sync.log</code> in the store directory.</p>
+<h2 id="i-forgot-my-private-bucket-s-password">I forgot my private bucket's password</h2>
+<p>It can't be recovered: the tasks are encrypted with a key derived from it, and there is no backdoor. Remove the bucket and start again.</p>
+<h2 id="written-by-a-newer-kru">"written by a newer kru"</h2>
+<p>Another device (or a newer install) saved the data in a newer format. Upgrade kru on this device. Don't edit the files by hand.</p>
+<h2 id="the-tui-won-t-take-alt-enter-for-a-new-line">The TUI won't take Alt+Enter for a new line</h2>
+<p>Some terminals send Enter and Alt+Enter as the same key. Use <kbd>Ctrl+J</kbd>, which works everywhere.</p>
+<h2 id="the-editor-that-opens-isn-t-the-one-i-want">The editor that opens isn't the one I want</h2>
+<pre><code>kru config set editor "code --wait"</code></pre>
+<h2 id="where-do-i-report-a-bug">Where do I report a bug?</h2>
+<p><a href="https://github.com/SuhrudhSarathy/kru/issues">GitHub issues</a>. Include <code>kru --version</code> and your OS.</p><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/faq.html">Edit this page on GitHub</a></p><div class="pager"><a href="library.html">← Rust library</a><a href="changelog.html">Changelog →</a></div></main></div></body></html>

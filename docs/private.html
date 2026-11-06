@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Private buckets · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="Private buckets · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l" href="install.html">Install</a><a class="l" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l" href="tasks.html">Tasks & fields</a><a class="l" href="buckets.html">Buckets</a><a class="l" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l on" href="private.html">Private buckets</a><a class="l" href="sync.html">Syncing</a><a class="l" href="config.html">Settings & storage</a><a class="l" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l" href="concepts.html">How it works</a><a class="l" href="library.html">Rust library</a><a class="l" href="faq.html">FAQ & troubleshooting</a><a class="l" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>Private buckets</h1>
+<p class="lead">Encrypt a bucket with a password. Locked, it doesn't exist as far as kru is concerned.</p>
+<h2 id="using-them">Using them</h2>
+<pre><code>kru bucket add diary --private     <span class="c"># new, encrypted bucket (asks for a password)</span>
+kru bucket private home            <span class="c"># encrypt an existing bucket</span>
+kru task list --unlock             <span class="c"># show private buckets for this command</span></code></pre>
+<p>In the TUI, <kbd>P</kbd> unlocks and <kbd>L</kbd> locks again.</p>
+<ul>
+<li>Locked private buckets are hidden from every command: lists, JSON output and task numbering. Their names are hidden too.</li>
+<li>The password is typed on the terminal and can't be passed any other way, so scripts and agents can't read or change private buckets.</li>
+<li><code>task add</code> without <code>-b</code> fails if the active bucket is private and locked.</li>
+<li>Notes of tasks in a private bucket are encrypted inside the bucket rather than kept as a plain file. They open only in your editor (<code>task md --path</code> is refused).</li>
+<li>Making a bucket private moves its notes inside and deletes the plain files.</li>
+</ul>
+<div class="note"><p><b>A forgotten password can't be recovered.</b> Without it the tasks cannot be decrypted. There is no reset.</p></div>
+<h2 id="how-it-s-encrypted">How it's encrypted</h2>
+<ul>
+<li><b>Key derivation:</b> Argon2id (19 MiB, 2 passes by default) with a random 16-byte salt per bucket.</li>
+<li><b>Cipher:</b> XChaCha20-Poly1305, with a fresh random nonce every time the bucket is sealed.</li>
+<li><b>What's encrypted:</b> the bucket's name, tasks and notes, as JSON. The bucket id is used as associated data, so a sealed bucket can't be passed off as another.</li>
+<li><b>What stays readable:</b> only the header (id and timestamps), so <a href="sync.html">sync</a> can tell which version is newer without the password.</li></ul>
+<p>Private buckets sync like any other: the git remote only ever sees the encrypted form.</p><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/private.html">Edit this page on GitHub</a></p><div class="pager"><a href="cli.html">← CLI reference</a><a href="sync.html">Syncing →</a></div></main></div></body></html>

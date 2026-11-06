@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Install · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="Install · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l on" href="install.html">Install</a><a class="l" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l" href="tasks.html">Tasks & fields</a><a class="l" href="buckets.html">Buckets</a><a class="l" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l" href="private.html">Private buckets</a><a class="l" href="sync.html">Syncing</a><a class="l" href="config.html">Settings & storage</a><a class="l" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l" href="concepts.html">How it works</a><a class="l" href="library.html">Rust library</a><a class="l" href="faq.html">FAQ & troubleshooting</a><a class="l" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>Install</h1>
+<p class="lead">kru is a single static binary. Pick whichever route suits you.</p>
+<h2 id="prebuilt-binaries">Prebuilt binaries</h2>
+<p>Download the archive for your system from the <a href="https://github.com/SuhrudhSarathy/kru/releases/latest">latest release</a>.</p>
+<table><tr><th>System</th><th>Archive</th></tr>
+<tr><td>macOS, Apple silicon</td><td><code>kru-aarch64-apple-darwin.tar.gz</code></td></tr>
+<tr><td>macOS, Intel</td><td><code>kru-x86_64-apple-darwin.tar.gz</code></td></tr>
+<tr><td>Linux, x86_64</td><td><code>kru-x86_64-unknown-linux-musl.tar.gz</code></td></tr>
+<tr><td>Linux, ARM64</td><td><code>kru-aarch64-unknown-linux-musl.tar.gz</code></td></tr>
+<tr><td>Windows, x86_64</td><td><code>kru-x86_64-pc-windows-msvc.zip</code></td></tr></table>
+<p>The Linux binaries are static and run on any distribution. Each archive has a <code>.sha256</code> file beside it to verify the download.</p>
+<h3 id="macos-and-linux">macOS and Linux</h3>
+<pre><code>target=aarch64-apple-darwin   <span class="c"># pick from the table above</span>
+mkdir -p ~/.local/bin
+curl -fsSL "https://github.com/SuhrudhSarathy/kru/releases/latest/download/kru-$target.tar.gz" \
+  | tar xz -C ~/.local/bin kru</code></pre>
+<p>Make sure <code>~/.local/bin</code> is on your <code>PATH</code>. If a browser-downloaded binary is blocked on macOS, clear the quarantine flag: <code>xattr -d com.apple.quarantine ~/.local/bin/kru</code>.</p>
+<h3 id="windows">Windows</h3>
+<p>Unzip <code>kru-x86_64-pc-windows-msvc.zip</code> and put <code>kru.exe</code> in a folder on your <code>PATH</code>.</p>
+<h2 id="from-source">From source</h2>
+<p>With <a href="https://rustup.rs">Rust</a> 1.89 or newer:</p>
+<pre><code>cargo install --git https://github.com/SuhrudhSarathy/kru --locked</code></pre>
+<h2 id="shell-completion">Shell completion</h2>
+<p>Tab completes commands and flags, plus your <b>bucket names, task numbers and setting names</b> (e.g. <code>kru task list -b &lt;Tab&gt;</code>). Add the line for your shell to its startup file:</p>
+<pre><code>source &lt;(COMPLETE=zsh kru)          <span class="c"># ~/.zshrc</span>
+source &lt;(COMPLETE=bash kru)         <span class="c"># ~/.bashrc</span>
+COMPLETE=fish kru | source          <span class="c"># ~/.config/fish/config.fish</span></code></pre>
+<h2 id="check-it-works">Check it works</h2>
+<pre><code>$ kru --version</code></pre><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/install.html">Edit this page on GitHub</a></p><div class="pager"><a href="./">← Overview</a><a href="getting-started.html">Getting started →</a></div></main></div></body></html>

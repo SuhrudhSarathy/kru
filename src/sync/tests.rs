@@ -320,3 +320,24 @@ fn private_buckets_sync_encrypted_and_open_on_the_other_device() {
     let history = String::from_utf8_lossy(&history.stdout);
     assert!(!history.contains("secret") && !history.contains("diary"));
 }
+
+#[test]
+fn files_are_never_converted_by_git() {
+    // On Windows git converts line endings by default, which would change
+    // notes' bytes on checkout.
+    let d = devices();
+    change(&d.a, |s| {
+        s.add_bucket("home").unwrap();
+    });
+    init(&d.a, &d.remote, false).unwrap();
+    let out = Command::new("git")
+        .args(["config", "--local", "core.autocrlf"])
+        .current_dir(&d.a)
+        .output()
+        .unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "false");
+    assert_eq!(
+        std::fs::read_to_string(d.a.join(".gitattributes")).unwrap(),
+        "* -text\n"
+    );
+}

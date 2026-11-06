@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Scripts & agents · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="Scripts & agents · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l" href="install.html">Install</a><a class="l" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l" href="tasks.html">Tasks & fields</a><a class="l" href="buckets.html">Buckets</a><a class="l" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l" href="private.html">Private buckets</a><a class="l" href="sync.html">Syncing</a><a class="l" href="config.html">Settings & storage</a><a class="l on" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l" href="concepts.html">How it works</a><a class="l" href="library.html">Rust library</a><a class="l" href="faq.html">FAQ & troubleshooting</a><a class="l" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>Scripts &amp; agents</h1>
+<p class="lead">kru's JSON output is its stable interface. The repo ships a <a href="https://github.com/SuhrudhSarathy/kru/blob/main/SKILL.md"><code>SKILL.md</code></a> that teaches LLM agents to use it.</p>
+<h2 id="ground-rules">Ground rules</h2>
+<ol>
+<li><b>Always pass <code>--json</code>.</b> Text output may change.</li>
+<li><b>Never run bare <code>kru</code></b> from a script: it opens the interactive TUI.</li>
+<li><b>Check the exit code.</b> Non-zero means failure with a one-line message on stderr.</li>
+<li><b>Refer to tasks by <code>id</code>,</b> not number.</li>
+<li><b>Use <code>--all</code></b> to see done tasks.</li>
+<li><b>Append context</b> (<code>task ctx -a</code>) instead of overwriting; replacing needs <code>--force</code>.</li></ol>
+<h2 id="task-json">Task JSON</h2>
+<pre><code>{
+  "num": 1, "bucket": "home", "description": "Pay rent",
+  "ctx": "Landlord: Sam", "priority": "high", "status": "todo",
+  "due": "2026-10-12T11:30:00Z", "completed": null,
+  "created": "2026-10-10T12:49:45Z", "edited": "2026-10-10T12:49:45Z",
+  "mdpath": "notes/01a125dc-….md", "id": "01a125dc-bcef-7784-8fc5-17784df85dec"
+}</code></pre>
+<p>Times are RFC 3339 UTC, so they compare correctly as strings. New keys may appear in future versions; ignore ones you don't know.</p>
+<h2 id="recipes">Recipes</h2>
+<pre><code><span class="c"># add and remember the id</span>
+id=$(kru task add -d "Write report" -p high --due fri -b work --json | jq -r .id)
+
+<span class="c"># change fields and see what changed</span>
+kru task mark "$id" -s in-progress --json | jq .changes
+
+<span class="c"># overdue tasks</span>
+now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+kru task list --json | jq --arg n "$now" '[.[] | select(.due != null and .due &lt; $n)]'
+
+<span class="c"># complete them all</span>
+kru task list --json | jq -r --arg n "$now" '.[] | select(.due != null and .due &lt; $n) | .id' \
+  | xargs -r kru task done --json
+
+<span class="c"># open tasks per bucket</span>
+kru bucket list --json | jq 'map({(.name): .open}) | add'</code></pre>
+<h2 id="private-buckets-and-agents">Private buckets and agents</h2>
+<p>Agents cannot see or change <a href="private.html">private buckets</a>: the password can only be typed at a terminal. If a task can't be found, it may be in one; ask the user to run the command with <code>--unlock</code>.</p>
+<h2 id="using-the-skill-with-claude-code">Using the skill with Claude Code</h2>
+<p>Copy <code>SKILL.md</code> into a <code>.claude/skills/kru/</code> directory (project) or <code>~/.claude/skills/kru/</code> (personal) and the agent will use kru for task requests. The file also documents the complete error table.</p><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/agents.html">Edit this page on GitHub</a></p><div class="pager"><a href="config.html">← Settings & storage</a><a href="concepts.html">How it works →</a></div></main></div></body></html>

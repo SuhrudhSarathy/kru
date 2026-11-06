@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Buckets · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="Buckets · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l" href="install.html">Install</a><a class="l" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l" href="tasks.html">Tasks & fields</a><a class="l on" href="buckets.html">Buckets</a><a class="l" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l" href="private.html">Private buckets</a><a class="l" href="sync.html">Syncing</a><a class="l" href="config.html">Settings & storage</a><a class="l" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l" href="concepts.html">How it works</a><a class="l" href="library.html">Rust library</a><a class="l" href="faq.html">FAQ & troubleshooting</a><a class="l" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>Buckets</h1>
+<p class="lead">A bucket is a named list of tasks: a project, a context, an area of life.</p>
+<pre><code>kru bucket add work          <span class="c"># create; the first one becomes active</span>
+kru bucket list              <span class="c"># * marks the active bucket</span>
+kru bucket use home          <span class="c"># default for `kru task add`</span>
+kru bucket rename work job
+kru bucket remove job        <span class="c"># asks first if it has open tasks; --force skips</span></code></pre>
+<ul>
+<li>Names are matched case-insensitively.</li>
+<li><code>task add</code> fails if the bucket doesn't exist, or if none is given and none is active.</li>
+<li>Removing a bucket with open tasks needs <code>--force</code> and deletes those tasks.</li>
+<li>Merging devices (see <a href="sync.html">Syncing</a>) combines buckets that share a name.</li>
+<li>A bucket can be made <a href="private.html">private</a>: encrypted and hidden.</li>
+</ul>
+<p>Move a task between buckets with <code>kru task move &lt;task&gt; -b &lt;bucket&gt;</code>, or <kbd>m</kbd> in the TUI.</p><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/buckets.html">Edit this page on GitHub</a></p><div class="pager"><a href="tasks.html">← Tasks & fields</a><a href="cli.html">CLI reference →</a></div></main></div></body></html>

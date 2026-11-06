@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rust library · kru</title>
+<meta name="description" content="kru: tasks, organised in buckets. A CLI and terminal UI task manager.">
+<meta property="og:title" content="Rust library · kru"><meta property="og:description" content="Tasks, organised in buckets. A CLI and terminal UI task manager."><meta property="og:type" content="website"><meta name="theme-color" content="#b4501e">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css"><script defer src="script.js"></script></head><body><div class="layout">
+<nav class="side" id="side"><button class="menu" onclick="document.getElementById('side').classList.toggle('open')">Menu</button>
+<a class="brand" href="./">kru<span>कृ</span></a><div class="tag">Tasks, organised in buckets</div>
+<div class="search"><input id="q" type="search" placeholder="Search docs…  ( / )" autocomplete="off"><div id="results"></div></div>
+<div class="links"><a class="l" href="./">Overview</a><div class="grp">Start</div><a class="l" href="install.html">Install</a><a class="l" href="getting-started.html">Getting started</a><div class="grp">Use</div><a class="l" href="guides.html">Workflows</a><a class="l" href="tui.html">Terminal UI</a><a class="l" href="tasks.html">Tasks & fields</a><a class="l" href="buckets.html">Buckets</a><a class="l" href="cli.html">CLI reference</a><div class="grp">Features</div><a class="l" href="private.html">Private buckets</a><a class="l" href="sync.html">Syncing</a><a class="l" href="config.html">Settings & storage</a><a class="l" href="agents.html">Scripts & agents</a><div class="grp">Reference</div><a class="l" href="concepts.html">How it works</a><a class="l on" href="library.html">Rust library</a><a class="l" href="faq.html">FAQ & troubleshooting</a><a class="l" href="changelog.html">Changelog</a><div class="grp">Links</div><a class="l" href="https://github.com/SuhrudhSarathy/kru">GitHub ↗</a><a class="l" href="https://github.com/SuhrudhSarathy/kru/releases/latest">Releases ↗</a></div></nav>
+<main><h1>Rust library</h1>
+<p class="lead">The <code>kru</code> crate is also a library, the same one the CLI and TUI are built on.</p>
+<div class="note"><p>The API is young and may change between releases. Pin a version or a git revision.</p></div>
+<h2 id="depend-on-it">Depend on it</h2>
+<pre><code>[dependencies]
+kru = { git = "https://github.com/SuhrudhSarathy/kru" }</code></pre>
+<h2 id="modules">Modules</h2>
+<table><tr><th>Module</th><th>What's in it</th></tr>
+<tr><td><code>kru::task</code></td><td><code>Task</code>, <code>Priority</code>, <code>Status</code></td></tr>
+<tr><td><code>kru::bucket</code></td><td><code>Bucket</code>: add, get, search, filter tasks</td></tr>
+<tr><td><code>kru::store</code></td><td><code>Store</code>: the persistent store (<code>Store::open</code>, <code>save</code>, buckets, notes, private buckets)</td></tr>
+<tr><td><code>kru::sync</code></td><td>Syncing and the merge</td></tr>
+<tr><td><code>kru::config</code></td><td>Settings</td></tr>
+<tr><td><code>kru::privacy</code></td><td>Sealing and unsealing buckets</td></tr></table>
+<h2 id="example">Example</h2>
+<pre><code>use jiff::{Timestamp, ToSpan};
+use kru::bucket::Bucket;
+use kru::task::{Priority, Status, Task};
+
+let mut home = Bucket::new("Home");
+let id = home.add(
+    Task::new("Buy groceries")
+        .with_priority(Priority::High)
+        .with_due(Timestamp::now() + 24.hours()),
+);
+home.get_mut(id).unwrap().set_status(Status::InProgress);
+
+for task in home.search("groceries") {
+    println!("{}", task.description);
+}</code></pre>
+<p>A longer, runnable version lives in <a href="https://github.com/SuhrudhSarathy/kru/blob/main/examples/api.rs"><code>examples/api.rs</code></a>: <code>cargo run --example api</code>.</p>
+<p>Build the API reference locally with <code>cargo doc --open</code>.</p><p class="edit"><a href="https://github.com/SuhrudhSarathy/kru/tree/main/docs/library.html">Edit this page on GitHub</a></p><div class="pager"><a href="concepts.html">← How it works</a><a href="faq.html">FAQ & troubleshooting →</a></div></main></div></body></html>

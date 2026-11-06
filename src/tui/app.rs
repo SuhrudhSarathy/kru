@@ -6,6 +6,7 @@
 //! - `normal`: actions while no prompt or confirmation is open
 //! - `edit`: editing a task's fields in the expanded view
 //! - `prompt`: text prompts and what their input does
+//! - `text`: the text field behind prompts and typing into a task's field
 //! - `confirm`: changes waiting for `y`, and applying them
 
 mod confirm;
@@ -13,6 +14,7 @@ mod edit;
 mod normal;
 mod prompt;
 mod select;
+mod text;
 
 use std::path::PathBuf;
 
@@ -22,6 +24,7 @@ use uuid::Uuid;
 pub use confirm::Pending;
 pub use edit::Editor;
 pub use prompt::Prompt;
+pub use text::{Motion, TextInput};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Focus {
@@ -39,7 +42,7 @@ pub enum Mode {
     Normal,
     Input {
         prompt: Prompt,
-        buffer: String,
+        buffer: TextInput,
     },
     /// Editing a task in the expanded view.
     Edit(Editor),
@@ -76,10 +79,18 @@ pub enum Action {
     OpenMd,
     /// Sync with the other devices now.
     Sync,
+    /// Ask for the password and unlock private buckets.
+    Unlock,
+    /// Lock private buckets again.
+    Lock,
     Input(char),
-    /// Alt+Enter while typing: a line break, in text fields.
+    /// Alt+Enter or Ctrl+J while typing: a line break, in text fields.
     Newline,
     Backspace,
+    /// Moves the cursor while typing.
+    Move(Motion),
+    /// Deletes up to where the motion would move the cursor, while typing.
+    Delete(Motion),
     Submit,
     Cancel,
     InvalidKey(String),

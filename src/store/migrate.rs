@@ -30,11 +30,18 @@ pub(crate) enum File {
 type Step = fn(File, &mut Value);
 
 /// The format history, oldest first.
-const STEPS: &[Step] = &[add_task_context, add_task_mdpath];
+const STEPS: &[Step] = &[add_task_context, add_task_mdpath, allow_private_buckets];
 
 /// The format this kru reads and writes. Files without a version (written
 /// before versioning) are version 0.
 pub(super) const VERSION: u64 = STEPS.len() as u64;
+
+/// The newest format that changed files other than private buckets. Those
+/// files are written at this version, not [`VERSION`], so a kru that
+/// predates private buckets can still read them (and sync with this device)
+/// until a private bucket is actually created. Raise it when a new step
+/// changes plain files.
+pub(super) const PLAIN_VERSION: u64 = 2;
 
 /// The version a file's JSON says it is.
 pub(super) fn version(file: &Value) -> u64 {
@@ -51,11 +58,18 @@ pub(super) fn upgrade(kind: File, file: &mut Value, from: u64) -> bool {
     !steps.is_empty()
 }
 
-/// Stamps a value with the current format and kru version, for writing.
-/// The two keys come first so they are easy to spot in the file.
+/// Stamps a value with the oldest format that can read it (private
+/// buckets need the current one; see [`PLAIN_VERSION`]) and the kru
+/// version that wrote it. The two keys come first so they are easy to spot
+/// in the file.
 pub(super) fn stamp(value: Value) -> Value {
+    let version = if value.get("sealed").is_some() {
+        VERSION
+    } else {
+        PLAIN_VERSION
+    };
     let mut stamped = Map::new();
-    stamped.insert("version".into(), VERSION.into());
+    stamped.insert("version".into(), version.into());
     stamped.insert("kru".into(), env!("CARGO_PKG_VERSION").into());
     if let Value::Object(fields) = value {
         stamped.extend(fields);
@@ -93,6 +107,11 @@ fn add_task_mdpath(kind: File, file: &mut Value) {
     }
 }
 
+/// 2 → 3: bucket files may be private (`{"header", "sealed"}`, see
+/// [`crate::privacy`]). Nothing to change in existing files; the new
+/// version stops older kru releases from misreading private ones.
+fn allow_private_buckets(_kind: File, _file: &mut Value) {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +138,14 @@ mod tests {
         let stamped = stamp(json!({ "name": "home" }));
         let keys: Vec<_> = stamped.as_object().unwrap().keys().cloned().collect();
         assert_eq!(keys, ["version", "kru", "name"]);
-        assert_eq!(version(&stamped), VERSION);
+    }
+
+    #[test]
+    fn files_are_stamped_with_the_oldest_format_that_reads_them() {
+        // Plain files stay readable by kru releases before private buckets.
+        assert_eq!(version(&stamp(json!({ "name": "home" }))), PLAIN_VERSION);
+        let private = stamp(json!({ "header": {}, "sealed": {} }));
+        assert_eq!(version(&private), VERSION);
+        const { assert!(PLAIN_VERSION < VERSION) };
     }
 }

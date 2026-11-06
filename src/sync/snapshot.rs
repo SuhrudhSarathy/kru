@@ -7,16 +7,20 @@ use uuid::Uuid;
 
 use super::git::Git;
 use crate::bucket::Bucket;
+use crate::privacy::Sealed;
 use crate::store::Tombstones;
-use crate::store::io::parse_versioned;
+use crate::store::io::{BucketFile, bucket_file, parse_versioned};
 use crate::store::migrate::File;
 use crate::utils::error::Result;
 
-/// Buckets (with their tasks) and tombstones: everything that syncs.
-/// Device-local state, like the active bucket, is not part of it.
+/// Buckets (with their tasks), private buckets (sealed), and tombstones:
+/// everything that syncs. Device-local state, like the active bucket, is
+/// not part of it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Snapshot {
     pub buckets: BTreeMap<Uuid, Bucket>,
+    /// Private buckets, encrypted (see [`crate::privacy`]).
+    pub sealed: BTreeMap<Uuid, Sealed>,
     pub tombstones: Tombstones,
 }
 
@@ -39,8 +43,15 @@ impl Snapshot {
             if path == "tombstones.json" {
                 snapshot.tombstones = parse_versioned(&text, &origin, File::Tombstones)?.0;
             } else if path.starts_with("buckets/") && path.ends_with(".json") {
-                let bucket: Bucket = parse_versioned(&text, &origin, File::Bucket)?.0;
-                snapshot.buckets.insert(bucket.header.id, bucket);
+                let value = parse_versioned(&text, &origin, File::Bucket)?.0;
+                match bucket_file(value, &origin)? {
+                    BucketFile::Plain(bucket) => {
+                        snapshot.buckets.insert(bucket.header.id, bucket);
+                    }
+                    BucketFile::Sealed(sealed) => {
+                        snapshot.sealed.insert(sealed.id(), sealed);
+                    }
+                }
             }
         }
         Ok(snapshot)

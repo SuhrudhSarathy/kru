@@ -44,6 +44,7 @@ pub fn bucket(store: &Store, bucket: &Bucket) -> Value {
         "name": bucket.name,
         "id": bucket.header.id,
         "active": active,
+        "private": store.is_private(bucket.header.id),
         "open": open,
         "done": bucket.len() - open,
     })

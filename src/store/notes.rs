@@ -22,6 +22,9 @@ impl Store {
     /// task's description) if it doesn't exist yet. Returns its path and
     /// whether it was created. Call [`Store::save`] to keep the link.
     pub fn attach_md(&mut self, id: Uuid) -> Result<(PathBuf, bool)> {
+        if self.is_private(self.find(id)?.bucket.header.id) {
+            return Err(Error::PrivateNotes);
+        }
         let relative = format!("notes/{id}.md");
         let path = self.dir.join(&relative);
         let created = !path.exists();

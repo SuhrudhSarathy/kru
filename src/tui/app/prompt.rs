@@ -3,6 +3,7 @@
 use kru::task::Task;
 
 use super::confirm::Op;
+use super::text::TextInput;
 use super::{Action, App, Focus, Mode, Result};
 
 /// What a text prompt is asking for.
@@ -12,12 +13,17 @@ pub enum Prompt {
     RenameBucket,
     AddTask,
     MoveTask,
+    /// The password of private buckets; typed characters aren't shown.
+    Unlock,
 }
 
 impl App {
     /// Opens a text prompt, pre-filled with `buffer`.
     pub(super) fn prompt(&mut self, prompt: Prompt, buffer: String) {
-        self.mode = Mode::Input { prompt, buffer };
+        self.mode = Mode::Input {
+            prompt,
+            buffer: TextInput::new(buffer),
+        };
     }
 
     /// Handles typing in a prompt; Enter submits, Esc cancels.
@@ -25,20 +31,19 @@ impl App {
         let Mode::Input { prompt, buffer } = &mut self.mode else {
             return Ok(());
         };
+        if buffer.apply(&action) {
+            return Ok(());
+        }
         match action {
-            Action::Input(c) => buffer.push(c),
-            Action::Backspace => {
-                buffer.pop();
-            }
             Action::Cancel => self.mode = Mode::Normal,
             Action::Submit => {
-                let (prompt, text) = (*prompt, std::mem::take(buffer));
+                let (prompt, text) = (*prompt, buffer.text().to_string());
                 self.mode = Mode::Normal;
                 if let Err(err) = self.submit(prompt, &text) {
                     // Keep the prompt open so the input can be fixed.
                     self.mode = Mode::Input {
                         prompt,
-                        buffer: text,
+                        buffer: TextInput::new(text),
                     };
                     return Err(err);
                 }
@@ -76,6 +81,13 @@ impl App {
                     self.select_task(id);
                     self.commit(format!("Added task to {bucket}"))?;
                 }
+            }
+            Prompt::Unlock => {
+                let opened = self.store.unlock(text)?;
+                self.clamp_selection();
+                self.info(format!(
+                    "Unlocked {opened} private bucket(s); L locks them again"
+                ));
             }
             Prompt::MoveTask => {
                 let (id, label) = self.require_selected()?;

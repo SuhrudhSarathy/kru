@@ -18,11 +18,13 @@
 //! - `bucket.rs`: adding, renaming, removing and selecting buckets
 //! - `task.rs`: numbering, looking up and changing tasks
 //! - `io.rs`: opening, saving and pruning
+//! - `privacy.rs`: private buckets: creating, unlocking, locking
 
 mod bucket;
 pub(crate) mod io;
 pub(crate) mod migrate;
 mod notes;
+mod privacy;
 mod task;
 mod tombstones;
 
@@ -35,12 +37,15 @@ use uuid::Uuid;
 
 use crate::bucket::Bucket;
 use crate::config::Config;
+use crate::privacy::Sealed;
 use crate::sync::Snapshot;
 use crate::task::Task;
 use crate::utils::error::{Error, Result};
 use directories::ProjectDirs;
 
 pub use tombstones::{TOMBSTONE_RETENTION, Tombstones};
+
+use privacy::Unlocked;
 
 /// How long done tasks are kept before [`Store::prune`] deletes them.
 pub const DONE_RETENTION: SignedDuration = SignedDuration::from_hours(7 * 24);
@@ -80,16 +85,31 @@ pub struct Store {
     /// When deleted tasks and buckets were deleted, for syncing.
     tombstones: Tombstones,
 
+    /// Private buckets as stored (encrypted). Unlocked ones also have a
+    /// readable copy in `buckets` and an entry in `unlocked`.
+    sealed: BTreeMap<Uuid, Sealed>,
+
+    /// Private buckets unlocked in this session: their key, and the bucket
+    /// as it was when last sealed, so unchanged ones aren't re-encrypted.
+    unlocked: BTreeMap<Uuid, Unlocked>,
+
     /// What was on disk when the store was loaded or last saved; a save
     /// merges against it if another process changed the files meanwhile.
     base: Snapshot,
 }
 
 impl Store {
-    /// The store's syncable contents (see [`Snapshot`]).
+    /// The store's syncable contents (see [`Snapshot`]). Private buckets
+    /// appear sealed, as of the last save.
     pub fn snapshot(&self) -> Snapshot {
         Snapshot {
-            buckets: self.buckets.clone(),
+            buckets: self
+                .buckets
+                .iter()
+                .filter(|(id, _)| !self.unlocked.contains_key(id))
+                .map(|(id, bucket)| (*id, bucket.clone()))
+                .collect(),
+            sealed: self.sealed.clone(),
             tombstones: self.tombstones.clone(),
         }
     }

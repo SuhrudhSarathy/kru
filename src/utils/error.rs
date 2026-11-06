@@ -62,6 +62,20 @@ pub enum Error {
     #[error("could not determine a config directory")]
     NoConfigDir,
 
+    #[error("wrong password")]
+    WrongPassword,
+
+    #[error("encryption failed: {0}")]
+    Crypto(String),
+
+    #[error("bucket `{0}` is private and locked; unlock it first")]
+    BucketLocked(String),
+
+    #[error(
+        "notes files aren't available for tasks in private buckets yet (they'd be stored unencrypted)"
+    )]
+    PrivateNotes,
+
     #[error("git isn't installed (or not on PATH); syncing needs it")]
     GitMissing,
 

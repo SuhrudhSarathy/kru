@@ -14,9 +14,9 @@ use ratatui::text::{Line, Text};
 use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table, TableState};
 
 use super::style;
-use super::wrap::wrap_display;
 use crate::theme;
 use crate::tui::app::{App, Focus};
+use crate::tui::wrap::wrap_display;
 
 /// Gap between columns, in cells.
 const COLUMN_SPACING: u16 = 1;

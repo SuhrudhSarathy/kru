@@ -10,6 +10,7 @@ use kru::task::{Change, Editing, Field, Task, Value};
 use uuid::Uuid;
 
 use super::confirm::Op;
+use super::text::TextInput;
 use super::{Action, App, Mode, Result, UiError};
 
 /// Editing one task: a cursor on an editable field, and staged changes.
@@ -21,7 +22,7 @@ pub struct Editor {
     /// Staged `(field key, input)` pairs, already checked; saved together.
     pub draft: Vec<(&'static str, String)>,
     /// Text being typed into the cursor's field, if any.
-    pub typing: Option<String>,
+    pub typing: Option<TextInput>,
     /// Close the expanded view when done (it was closed before editing).
     close_after: bool,
 }
@@ -63,8 +64,8 @@ impl App {
             None => fields.first(),
         }
         .ok_or_else(|| UiError("Nothing to edit".to_string()))?;
-        let typing =
-            (typing && !matches!(cursor.value, Value::Choice { .. })).then(|| cursor.value.short());
+        let typing = (typing && !matches!(cursor.value, Value::Choice { .. }))
+            .then(|| TextInput::new(cursor.value.short()));
 
         self.mode = Mode::Edit(Editor {
             id,
@@ -79,9 +80,9 @@ impl App {
 
     /// Keys while editing: j/k move between fields, h/l change a choice,
     /// Enter types into a text or time field, Esc finishes. While typing,
-    /// Enter keeps the text, Alt+Enter adds a line break (text fields only;
-    /// single-line fields turn it into a space when saved) and Esc drops
-    /// the text.
+    /// Enter keeps the text, Alt+Enter or Ctrl+J adds a line break (text
+    /// fields only; single-line fields turn it into a space when saved) and
+    /// Esc drops the text.
     pub(super) fn on_edit(&mut self, action: Action) -> Result<()> {
         if action == Action::Newline {
             let field = self.cursor_field()?;
@@ -92,7 +93,7 @@ impl App {
                 typing: Some(text), ..
             }) = &mut self.mode
             {
-                text.push('\n');
+                text.insert('\n');
             }
             return Ok(());
         }
@@ -100,14 +101,13 @@ impl App {
             return Ok(());
         };
         if let Some(text) = &mut editor.typing {
+            if text.apply(&action) {
+                return Ok(());
+            }
             match action {
-                Action::Input(c) => text.push(c),
-                Action::Backspace => {
-                    text.pop();
-                }
                 Action::Cancel => editor.typing = None,
                 Action::Submit => {
-                    let (key, input) = (editor.cursor, text.clone());
+                    let (key, input) = (editor.cursor, text.text().to_string());
                     // On invalid input the error shows and typing goes on.
                     self.stage(key, input)?;
                     if let Mode::Edit(editor) = &mut self.mode {
@@ -132,7 +132,7 @@ impl App {
                 if matches!(field.value, Value::Choice { .. }) {
                     self.cycle_draft(1)?;
                 } else if let Mode::Edit(editor) = &mut self.mode {
-                    editor.typing = Some(field.value.short());
+                    editor.typing = Some(TextInput::new(field.value.short()));
                 }
             }
             Action::Cancel => self.finish_editing()?,

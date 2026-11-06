@@ -75,7 +75,10 @@ impl Store {
             Some(name) => self.bucket_id(name)?,
             None => self.state.active.ok_or(Error::NoActiveBucket)?,
         };
-        let bucket = self.buckets.get_mut(&bucket_id).expect("id is valid");
+        let bucket = self
+            .buckets
+            .get_mut(&bucket_id)
+            .ok_or_else(|| Error::BucketLocked("the active bucket".into()))?;
         Ok(bucket.add(task))
     }
 
@@ -128,6 +131,9 @@ impl Store {
     pub fn move_task(&mut self, id: Uuid, to_bucket: &str) -> Result<()> {
         let to = self.bucket_id(to_bucket)?;
         let from = self.bucket_of(id)?;
+        if self.is_private(to) && self.find(id)?.task.mdpath.is_some() {
+            return Err(Error::PrivateNotes);
+        }
         if from != to {
             let task = self.buckets.get_mut(&from).unwrap().remove(id).unwrap();
             self.buckets.get_mut(&to).unwrap().add(task);

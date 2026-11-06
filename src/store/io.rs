@@ -11,6 +11,7 @@ use uuid::Uuid;
 use super::migrate::{self, File};
 use super::{DONE_RETENTION, State, Store, TOMBSTONE_RETENTION, Tombstones};
 use crate::bucket::Bucket;
+use crate::privacy::Sealed;
 use crate::sync::{self, Snapshot};
 use crate::utils::error::{Error, Result};
 
@@ -36,10 +37,9 @@ impl Store {
         };
 
         // If the active bucket has somehow been deleted, reset it to none.
-        if state
-            .active
-            .is_some_and(|id| !snapshot.buckets.contains_key(&id))
-        {
+        if state.active.is_some_and(|id| {
+            !snapshot.buckets.contains_key(&id) && !snapshot.sealed.contains_key(&id)
+        }) {
             state.active = None;
         }
 
@@ -48,6 +48,8 @@ impl Store {
             buckets: snapshot.buckets.clone(),
             state,
             tombstones: snapshot.tombstones.clone(),
+            sealed: snapshot.sealed.clone(),
+            unlocked: BTreeMap::new(),
             base: snapshot,
         };
 
@@ -64,12 +66,15 @@ impl Store {
     /// changes are merged in first (see [`crate::sync::merge`]) and this
     /// store is updated to the merged result, so nobody's edits are lost.
     pub fn save(&mut self) -> Result<()> {
+        self.reseal()?;
         let _lock = lock(&self.dir)?;
         let on_disk = load_snapshot(&self.dir)?;
         if on_disk != self.base {
             let merged = sync::merge(&self.base, &self.snapshot(), &on_disk);
             self.buckets = merged.snapshot.buckets;
             self.tombstones = merged.snapshot.tombstones;
+            self.sealed = merged.snapshot.sealed;
+            self.reopen_unlocked();
             self.follow_redirects(&merged.redirects);
         }
 
@@ -90,7 +95,7 @@ impl Store {
         if self
             .state
             .active
-            .is_some_and(|id| !self.buckets.contains_key(&id))
+            .is_some_and(|id| !self.buckets.contains_key(&id) && !self.sealed.contains_key(&id))
         {
             self.state.active = None;
         }
@@ -140,9 +145,16 @@ pub(crate) fn load_snapshot(dir: &Path) -> Result<Snapshot> {
     let buckets_dir = dir.join("buckets");
     fs::create_dir_all(&buckets_dir).map_err(io_error(&buckets_dir))?;
     let mut buckets = BTreeMap::new();
+    let mut sealed = BTreeMap::new();
     for path in json_files(&buckets_dir)? {
-        let bucket: Bucket = read_versioned(&path, File::Bucket)?;
-        buckets.insert(bucket.header.id, bucket);
+        match bucket_file(read_versioned(&path, File::Bucket)?, &path)? {
+            BucketFile::Plain(bucket) => {
+                buckets.insert(bucket.header.id, bucket);
+            }
+            BucketFile::Sealed(private) => {
+                sealed.insert(private.id(), private);
+            }
+        }
     }
     let stones_path = dir.join("tombstones.json");
     let tombstones = if stones_path.exists() {
@@ -152,8 +164,32 @@ pub(crate) fn load_snapshot(dir: &Path) -> Result<Snapshot> {
     };
     Ok(Snapshot {
         buckets,
+        sealed,
         tombstones,
     })
+}
+
+/// A bucket file's contents: a plain bucket, or a private one.
+pub(crate) enum BucketFile {
+    Plain(Bucket),
+    Sealed(Sealed),
+}
+
+/// Tells a private bucket file (it has a `sealed` key) from a plain one.
+pub(crate) fn bucket_file(value: Value, path: &Path) -> Result<BucketFile> {
+    let json_error = |source| Error::Json {
+        path: path.to_path_buf(),
+        source,
+    };
+    if value.get("sealed").is_some() {
+        serde_json::from_value(value)
+            .map(BucketFile::Sealed)
+            .map_err(json_error)
+    } else {
+        serde_json::from_value(value)
+            .map(BucketFile::Plain)
+            .map_err(json_error)
+    }
 }
 
 /// Writes the syncable part of a store to `dir`: every bucket, the
@@ -164,12 +200,17 @@ pub(crate) fn write_snapshot(dir: &Path, snapshot: &Snapshot) -> Result<()> {
     for bucket in snapshot.buckets.values() {
         write_json(&bucket_path(&buckets_dir, bucket.header.id), bucket)?;
     }
+    for private in snapshot.sealed.values() {
+        write_json(&bucket_path(&buckets_dir, private.id()), private)?;
+    }
     for path in json_files(&buckets_dir)? {
         let id = path
             .file_stem()
             .and_then(|stem| stem.to_str())
             .and_then(|stem| stem.parse::<Uuid>().ok());
-        if id.is_some_and(|id| !snapshot.buckets.contains_key(&id)) {
+        let exists =
+            |id: &Uuid| snapshot.buckets.contains_key(id) || snapshot.sealed.contains_key(id);
+        if id.is_some_and(|id| !exists(&id)) {
             fs::remove_file(&path).map_err(io_error(&path))?;
         }
     }
@@ -210,13 +251,14 @@ pub(super) fn json_files(dir: &Path) -> Result<Vec<PathBuf>> {
 }
 
 /// Reads a store file, upgrading it first if an older kru wrote it (see
-/// [`migrate`]), and deserializes it. Before upgrading, the original is
-/// copied to `<file>.v<version>.bak`. Fails on files from a newer kru.
+/// [`migrate`]), and deserializes it. If the upgrade changes the file, the
+/// original is first copied to `<file>.v<version>.bak`. Fails on files from
+/// a newer kru.
 fn read_versioned<T: DeserializeOwned>(path: &Path, kind: File) -> Result<T> {
     let text = fs::read_to_string(path).map_err(io_error(path))?;
     let (value, version) = parse_versioned(&text, path, kind)?;
     let backup = path.with_extension(format!("json.v{version}.bak"));
-    if version < migrate::VERSION && !backup.exists() {
+    if version < migrate::PLAIN_VERSION && !backup.exists() {
         fs::copy(path, &backup).map_err(io_error(&backup))?;
     }
     Ok(value)
@@ -258,10 +300,11 @@ pub(crate) fn settle_active(dir: &Path, redirects: &BTreeMap<Uuid, Uuid>) -> Res
     } else {
         State::default()
     };
-    let buckets = load_snapshot(dir)?.buckets;
+    let snapshot = load_snapshot(dir)?;
+    let exists = |id: &Uuid| snapshot.buckets.contains_key(id) || snapshot.sealed.contains_key(id);
     let mut active = state.active.map(|id| *redirects.get(&id).unwrap_or(&id));
-    if active.is_none_or(|id| !buckets.contains_key(&id)) {
-        active = buckets.keys().next().copied();
+    if active.is_none_or(|id| !exists(&id)) {
+        active = snapshot.buckets.keys().next().copied();
     }
     if active != state.active {
         state.active = active;
@@ -361,7 +404,7 @@ mod tests {
         assert_eq!(fs::read_to_string(&backup).unwrap(), UNVERSIONED_BUCKET);
         store.save().unwrap();
         let saved: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(saved["version"], migrate::VERSION);
+        assert_eq!(saved["version"], migrate::PLAIN_VERSION);
         assert_eq!(
             json_files(&buckets).unwrap().len(),
             1,

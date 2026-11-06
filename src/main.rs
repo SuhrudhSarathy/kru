@@ -15,11 +15,21 @@ fn main() -> anyhow::Result<()> {
     if cli.json && cli.command.is_none() {
         bail!("--json needs a command, e.g. `kru task list --json`");
     }
+    let open = || -> anyhow::Result<Store> {
+        let mut store = Store::open_default()?;
+        if cli.unlock {
+            if store.locked_count() == 0 {
+                bail!("there are no locked private buckets");
+            }
+            store.unlock(&cli::password::ask()?)?;
+        }
+        Ok(store)
+    };
     match cli.command {
         // Settings don't need the store, which may be what's misconfigured.
         Some(cli::Command::Config { command }) => cli::config::run(command, cli.json),
         Some(command) => {
-            let mut store = Store::open_default()?;
+            let mut store = open()?;
             let changes_data = command.changes_data();
             cli::run(command, &mut store, &fields, cli.json)?;
             if changes_data && Config::load()?.autosync() && kru::sync::is_set_up(store.dir()) {
@@ -27,6 +37,6 @@ fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
-        None => tui::run(Store::open_default()?),
+        None => tui::run(open()?),
     }
 }

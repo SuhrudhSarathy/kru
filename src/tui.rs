@@ -4,7 +4,9 @@
 
 mod app;
 mod event;
+mod terminal;
 mod ui;
+mod wrap;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
@@ -49,9 +51,9 @@ pub fn run(store: Store) -> Result<()> {
     };
     let background = (syncs && config.autosync()).then(|| autosync(dir.clone()));
 
-    let mut terminal = ratatui::init();
+    let mut terminal = terminal::enter();
     let result = event_loop(&mut terminal, &mut app, &editor, &dir, background.as_ref());
-    ratatui::restore();
+    terminal::leave();
 
     if syncs {
         eprint!("Syncing… ");
@@ -80,9 +82,9 @@ fn event_loop(
             app.update(action);
         }
         if let Some(path) = app.open_file.take() {
-            ratatui::restore();
+            terminal::leave();
             let result = crate::editor::open(editor, &path).map_err(|err| format!("{err:#}"));
-            *terminal = ratatui::init();
+            *terminal = terminal::enter();
             app.editor_closed(result);
         }
         if std::mem::take(&mut app.sync_requested) {
@@ -434,8 +436,65 @@ mod tests {
             app.update(Action::Input(c));
         }
         alt_enter(&mut app);
-        assert!(matches!(&app.mode, Mode::Input { buffer, .. } if buffer == "Half"));
+        assert!(matches!(&app.mode, Mode::Input { buffer, .. } if buffer.text() == "Half"));
         assert!(app.message.as_ref().unwrap().is_error);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn typing_edits_at_the_cursor_with_the_real_keys() {
+        use ratatui::crossterm::event::KeyModifiers;
+        let chord = |app: &mut App, code, modifiers| {
+            if let Some(action) = event::action_for(KeyEvent::new(code, modifiers), &app.mode) {
+                app.update(action);
+            }
+        };
+        let dir = std::env::temp_dir().join(format!("kru-tui-{}", uuid::Uuid::new_v4()));
+        let mut app = App::new(Store::open(&dir).unwrap());
+        app.update(Action::Add);
+        type_text(&mut app, "home");
+        app.update(Action::FocusTasks);
+        app.update(Action::Add);
+        type_text(&mut app, "Fix the sink");
+
+        press(&mut app, KeyCode::Char('e'));
+        press(&mut app, KeyCode::Char('j')); // Context
+        press(&mut app, KeyCode::Enter);
+        for c in "ac".chars() {
+            press(&mut app, KeyCode::Char(c));
+        }
+        press(&mut app, KeyCode::Left);
+        press(&mut app, KeyCode::Char('b'));
+        press(&mut app, KeyCode::Right);
+        press(&mut app, KeyCode::Char('h')); // Types, rather than moving.
+        chord(&mut app, KeyCode::Enter, KeyModifiers::ALT);
+        press(&mut app, KeyCode::Char('d'));
+        chord(&mut app, KeyCode::Char('j'), KeyModifiers::CONTROL);
+        press(&mut app, KeyCode::Char('e'));
+        chord(&mut app, KeyCode::Enter, KeyModifiers::SHIFT);
+        press(&mut app, KeyCode::Char('f'));
+        press(&mut app, KeyCode::Up);
+        press(&mut app, KeyCode::Up);
+        chord(&mut app, KeyCode::Left, KeyModifiers::SUPER);
+        press(&mut app, KeyCode::Char('>'));
+        chord(&mut app, KeyCode::Char('x'), KeyModifiers::CONTROL);
+        assert!(app.message.as_ref().unwrap().is_error, "not typed");
+        let screen_text = screen(&app);
+        assert!(screen_text.contains(">d"), "{screen_text}");
+
+        press(&mut app, KeyCode::Enter);
+        save(&mut app);
+        assert_eq!(task(&app, 1).ctx, "abch\n>d\ne\nf");
+
+        // Prompts use the same keys.
+        app.update(Action::Add);
+        for c in "ac".chars() {
+            press(&mut app, KeyCode::Char(c));
+        }
+        press(&mut app, KeyCode::Left);
+        type_text(&mut app, "b");
+        assert!(app.store.entries().any(|e| e.task.description == "abc"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -467,6 +526,51 @@ mod tests {
 
         app.editor_closed(Err("the editor `nope` exited".into()));
         assert!(app.message.as_ref().unwrap().is_error);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn private_buckets_unlock_with_p_and_lock_with_l() {
+        let dir = std::env::temp_dir().join(format!("kru-tui-{}", uuid::Uuid::new_v4()));
+        let mut store = Store::open(&dir).unwrap();
+        store.add_bucket("home").unwrap();
+        store.add_private_bucket("diary", "secret pw").unwrap();
+        store
+            .add_task(Some("diary"), kru::task::Task::new("a secret"))
+            .unwrap();
+        store.save().unwrap();
+
+        let mut app = App::new(Store::open(&dir).unwrap());
+        let locked = screen(&app);
+        assert!(locked.contains("1 locked"), "{locked}");
+        assert!(!locked.contains("diary"), "{locked}");
+
+        // A wrong password is refused and the prompt stays open.
+        press(&mut app, KeyCode::Char('P'));
+        type_text(&mut app, "nope");
+        assert!(matches!(app.mode, Mode::Input { .. }));
+        assert!(app.message.as_ref().unwrap().is_error);
+        press(&mut app, KeyCode::Esc);
+
+        // The password isn't shown while typing.
+        press(&mut app, KeyCode::Char('P'));
+        for c in "secret pw".chars() {
+            app.update(Action::Input(c));
+        }
+        let typing = screen(&app);
+        assert!(
+            !typing.contains("secret pw") && typing.contains("•••"),
+            "{typing}"
+        );
+        app.update(Action::Submit);
+        let unlocked = screen(&app);
+        assert!(unlocked.contains("diary"), "{unlocked}");
+        assert!(!unlocked.contains("locked ·"), "{unlocked}");
+
+        press(&mut app, KeyCode::Char('L'));
+        assert!(!screen(&app).contains("diary"));
+        assert_eq!(app.store.locked_count(), 1);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

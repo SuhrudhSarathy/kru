@@ -8,7 +8,22 @@ use super::{complete, json, output};
 #[derive(Subcommand)]
 pub enum BucketCommand {
     /// Create a bucket (the first one becomes the active bucket)
-    Add { name: String },
+    Add {
+        name: String,
+
+        /// Make it private: encrypted with a password you'll be asked for,
+        /// and hidden unless you pass --unlock. A forgotten password can't
+        /// be recovered.
+        #[arg(long)]
+        private: bool,
+    },
+
+    /// Make a bucket private: encrypted with a password you'll be asked
+    /// for, and hidden unless you pass --unlock
+    Private {
+        #[arg(add = ArgValueCompleter::new(complete::buckets))]
+        name: String,
+    },
 
     /// List buckets; `*` marks the active one
     #[command(visible_alias = "ls")]
@@ -49,13 +64,30 @@ impl BucketCommand {
 /// Runs a `kru bucket …` command; `as_json` prints JSON instead of text.
 pub fn run(command: BucketCommand, store: &mut Store, as_json: bool) -> Result<()> {
     match command {
-        BucketCommand::Add { name } => {
-            let name = store.add_bucket(&name)?.name.clone();
+        BucketCommand::Add { name, private } => {
+            let name = if private {
+                let password = super::password::new()?;
+                store.add_private_bucket(&name, &password)?.name.clone()
+            } else {
+                store.add_bucket(&name)?.name.clone()
+            };
             store.save()?;
             if as_json {
                 json::print(json::bucket(store, store.bucket(&name)?));
             } else {
                 println!("Added bucket {name}.");
+            }
+        }
+
+        BucketCommand::Private { name } => {
+            let name = store.bucket(&name)?.name.clone();
+            let password = super::password::new()?;
+            store.make_private(&name, &password)?;
+            store.save()?;
+            if as_json {
+                json::print(json::bucket(store, store.bucket(&name)?));
+            } else {
+                println!("{name} is now private; use --unlock to see it.");
             }
         }
 

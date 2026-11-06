@@ -71,6 +71,8 @@ impl Store {
             self.state.active = None;
         }
         let bucket = self.buckets.remove(&id).expect("id comes from the map");
+        self.sealed.remove(&id);
+        self.unlocked.remove(&id);
         let now = jiff::Timestamp::now();
         for task in bucket.iter() {
             self.delete_md_of(task);

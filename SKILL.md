@@ -87,10 +87,11 @@ versions, so ignore keys you don't know.
 ### Bucket
 
 ```json
-{"name": "home", "id": "01a125dc-…", "active": true, "open": 2, "done": 1}
+{"name": "home", "id": "01a125dc-…", "active": true, "private": false, "open": 2, "done": 1}
 ```
 
 `active` marks the bucket `task add` uses when no `--bucket` is given.
+`private` marks an unlocked private bucket (see [Private buckets](#private-buckets)).
 
 ### Change
 
@@ -192,6 +193,21 @@ date (no due date last), then higher priority.
 - **Several kru processes can share a store.** Saves lock the store and
   merge in whatever another process saved meanwhile, so a CLI call never
   undoes what an open TUI did, or the other way round.
+
+## Private buckets
+
+A bucket can be private: encrypted with a password, and hidden from every
+command (lists, JSON, numbering) unless the password is given with
+`--unlock`. The password is typed on the terminal and can't be passed any
+other way, so **agents can't see or change private buckets**. Don't try to:
+if the user asks about tasks you can't find, tell them they may be in a
+private bucket and that they can run the command themselves with `--unlock`.
+
+- `kru bucket add <name> --private` and `kru bucket private <name>` (make an
+  existing bucket private) ask for a new password; only a person can run them.
+- `task add` without `--bucket` fails if the active bucket is private and
+  locked.
+- Notes files (`task md`) aren't available for tasks in private buckets.
 
 ## Syncing across devices
 
@@ -310,6 +326,10 @@ Changing `dir` doesn't move existing data.
 | `Error: git isn't installed …` | 1 | syncing needs `git` on `PATH` |
 | `Error: git fetch failed: …` / `git push failed: …` | 1 | network or access problem with the remote; nothing was lost, retry later |
 | `Error: this store already syncs with <url>` | 1 | `sync init` was given a different remote than the one set up |
+| `Error: bucket \`…\` is private and locked; unlock it first` | 1 | the active bucket is private: pass `-b <bucket>`, or ask the user |
+| `Error: a password can only be entered on a terminal` | 1 | `--unlock` needs a person at a terminal; agents can't use it |
+| `Error: wrong password` | 1 | only the user can retry |
+| `Error: notes files aren't available for tasks in private buckets yet …` | 1 | keep notes in `ctx` instead (it's encrypted with the bucket) |
 | `error: invalid value 'x' for '--status …'` | 2 | bad argument; see `--help` |
 
 ## Example session

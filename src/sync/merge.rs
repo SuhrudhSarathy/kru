@@ -11,6 +11,10 @@
 //! | bucket deleted, but holds tasks kept by the merge | the bucket is kept |
 //! | two buckets with the same name | merged into the more recently edited one |
 //!
+//! Private buckets are encrypted, so they can't be merged field by field:
+//! the more recent version of the whole bucket wins, and a bucket made
+//! private on either side stays private.
+//!
 //! Entities are compared as JSON objects, so fields added to tasks later
 //! are merged without changes here. `status` and `time_completed` are
 //! merged together, so a task can't end up open with a completion time.
@@ -23,6 +27,7 @@ use uuid::Uuid;
 
 use super::Snapshot;
 use crate::bucket::Bucket;
+use crate::privacy::Sealed;
 use crate::store::Tombstones;
 use crate::task::Task;
 use crate::utils::header::Header;
@@ -74,6 +79,12 @@ pub enum What {
     /// A task's notes file changed in the same places on both devices; the
     /// more recently committed one was kept.
     NotesOverwritten { kept_this_device: bool },
+    /// A private bucket changed on both devices; being encrypted, the
+    /// changes can't be combined, so the later version was kept.
+    PrivateReplaced,
+    /// A bucket was made private on one device while it was edited on the
+    /// other; it stays private, without those edits.
+    MadePrivate,
 }
 
 impl Conflict {
@@ -86,6 +97,12 @@ impl Conflict {
             What::BucketKept => "bucket kept: it still has tasks".into(),
             What::BucketsMerged { .. } => {
                 "merged with the bucket of the same name from the other device".into()
+            }
+            What::PrivateReplaced => {
+                "private bucket changed on both devices; kept the later version".into()
+            }
+            What::MadePrivate => {
+                "made private on one device; edits made meanwhile on the other weren't kept".into()
             }
             What::NotesOverwritten { kept_this_device } => format!(
                 "notes: edited in the same places on both devices; kept {}",
@@ -104,6 +121,19 @@ impl Conflict {
 /// side is "ours".
 pub fn merge(base: &Snapshot, ours: &Snapshot, theirs: &Snapshot) -> Merged {
     let mut conflicts = Vec::new();
+
+    // Private buckets first; the rest of the merge doesn't see them (nor,
+    // for buckets private on any side, their plain versions).
+    let sealed = merge_sealed(base, ours, theirs, &mut conflicts);
+    let private: BTreeSet<Uuid> = [base, ours, theirs]
+        .iter()
+        .flat_map(|side| side.sealed.keys().copied())
+        .collect();
+    let (base, ours, theirs) = (
+        &without(base, &private),
+        &without(ours, &private),
+        &without(theirs, &private),
+    );
 
     let buckets = merge_all(
         Kind::Bucket,
@@ -158,16 +188,103 @@ pub fn merge(base: &Snapshot, ours: &Snapshot, theirs: &Snapshot) -> Merged {
         .flat_map(|b| b.iter().map(|t| t.header.id))
         .collect();
     tombstones.tasks.retain(|id, _| !task_ids.contains(id));
-    tombstones.buckets.retain(|id, _| !result.contains_key(id));
+    tombstones
+        .buckets
+        .retain(|id, _| !result.contains_key(id) && !sealed.contains_key(id));
 
     Merged {
         snapshot: Snapshot {
             buckets: result,
+            sealed,
             tombstones,
         },
         conflicts,
         redirects,
     }
+}
+
+/// Merges private buckets, each as a whole: changed on one side → that
+/// side; on both → the later version; deleted → the later of the delete and
+/// the edit. A bucket private on one side and plain on the other was made
+/// private there, and stays private.
+fn merge_sealed(
+    base: &Snapshot,
+    ours: &Snapshot,
+    theirs: &Snapshot,
+    conflicts: &mut Vec<Conflict>,
+) -> BTreeMap<Uuid, Sealed> {
+    let as_map = |sealed: &Sealed| into_map(serde_json::to_value(sealed).expect("serializes"));
+    let ids: BTreeSet<Uuid> = [base, ours, theirs]
+        .iter()
+        .flat_map(|side| side.sealed.keys().copied())
+        .collect();
+
+    let mut merged = BTreeMap::new();
+    for id in ids {
+        let base_map = base.sealed.get(&id).map(as_map);
+        let kept = match (ours.sealed.get(&id), theirs.sealed.get(&id)) {
+            (Some(o), Some(t)) if o == t => Some(o.clone()),
+            (Some(o), Some(t)) => {
+                let (o_map, t_map) = (as_map(o), as_map(t));
+                if Some(&t_map) == base_map.as_ref() {
+                    Some(o.clone())
+                } else if Some(&o_map) == base_map.as_ref() {
+                    Some(t.clone())
+                } else {
+                    conflicts.push(Conflict {
+                        kind: Kind::Bucket,
+                        id,
+                        what: What::PrivateReplaced,
+                    });
+                    let ours_later = (o.header.time_last_edited, &o.sealed.data)
+                        >= (t.header.time_last_edited, &t.sealed.data);
+                    Some(if ours_later { o.clone() } else { t.clone() })
+                }
+            }
+            (Some(present), None) | (None, Some(present)) => {
+                let (other, other_stones) = if ours.sealed.contains_key(&id) {
+                    (theirs, &theirs.tombstones.buckets)
+                } else {
+                    (ours, &ours.tombstones.buckets)
+                };
+                if let Some(plain) = other.buckets.get(&id) {
+                    // Made private on this side; the other still has it
+                    // plain. It stays private.
+                    if base.buckets.get(&id) != Some(plain) && !base.sealed.contains_key(&id) {
+                        conflicts.push(Conflict {
+                            kind: Kind::Bucket,
+                            id,
+                            what: What::MadePrivate,
+                        });
+                    }
+                    Some(present.clone())
+                } else {
+                    one_sided(
+                        Kind::Bucket,
+                        id,
+                        &as_map(present),
+                        base_map.as_ref(),
+                        other_stones.get(&id),
+                        conflicts,
+                    )
+                    .map(|_| present.clone())
+                }
+            }
+            (None, None) => None,
+        };
+        if let Some(sealed) = kept {
+            merged.insert(id, sealed);
+        }
+    }
+    merged
+}
+
+/// A copy of `snapshot` without the plain buckets in `ids` (and their
+/// tasks).
+fn without(snapshot: &Snapshot, ids: &BTreeSet<Uuid>) -> Snapshot {
+    let mut copy = snapshot.clone();
+    copy.buckets.retain(|id, _| !ids.contains(id));
+    copy
 }
 
 /// Merges every entity of one kind. `maps` are base, ours, theirs; `stones`
@@ -476,7 +593,7 @@ mod tests {
         }
         Snapshot {
             buckets: BTreeMap::from([(home.header.id, home)]),
-            tombstones: Tombstones::default(),
+            ..Snapshot::default()
         }
     }
 
@@ -686,5 +803,74 @@ mod tests {
         assert_eq!(survivor.len(), 2);
         assert_eq!(merged.redirects.get(&id(100)), Some(&id(200)));
         assert!(merged.snapshot.tombstones.buckets.contains_key(&id(100)));
+    }
+
+    /// `snapshot` with the home bucket made private (sealed with `pw`).
+    fn privately(snapshot: &Snapshot, edited: i64) -> Snapshot {
+        let mut copy = snapshot.clone();
+        let mut home = copy.buckets.remove(&id(100)).unwrap();
+        home.header.time_last_edited = at(edited);
+        let key = crate::privacy::Key::derive("pw", &kdf()).unwrap();
+        copy.sealed
+            .insert(id(100), crate::privacy::seal(&home, &key).unwrap());
+        copy
+    }
+
+    /// One salt for every test seal, so all use the same key.
+    fn kdf() -> crate::privacy::Kdf {
+        crate::privacy::Kdf {
+            salt: "00112233445566778899aabbccddeeff".into(),
+            m_cost: 8,
+            t_cost: 1,
+            p_cost: 1,
+        }
+    }
+
+    #[test]
+    fn a_private_bucket_changed_on_both_sides_keeps_the_later_version() {
+        let base = privately(&home(vec![task(1, "a", 0)]), 0);
+        let ours = privately(&home(vec![task(1, "a, ours", 3)]), 3);
+        let theirs = privately(&home(vec![task(1, "a, theirs", 7)]), 7);
+        let merged = merge(&base, &ours, &theirs);
+        assert_eq!(merged.snapshot.sealed[&id(100)], theirs.sealed[&id(100)]);
+        assert_eq!(
+            merge(&base, &theirs, &ours).snapshot,
+            merged.snapshot,
+            "symmetric"
+        );
+        assert!(
+            merged
+                .conflicts
+                .iter()
+                .any(|c| c.what == What::PrivateReplaced)
+        );
+
+        // Changed on one side only: that side, no conflict.
+        let merged = merge(&base, &base.clone(), &ours);
+        assert_eq!(merged.snapshot.sealed[&id(100)], ours.sealed[&id(100)]);
+        assert!(merged.conflicts.is_empty());
+    }
+
+    #[test]
+    fn a_bucket_made_private_on_one_side_stays_private() {
+        let base = home(vec![task(1, "a", 0)]);
+        let made_private = privately(&base, 2);
+        let edited_plain = home(vec![task(1, "a, edited later", 9)]);
+        let merged = merge(&base, &edited_plain, &made_private);
+        assert!(merged.snapshot.buckets.is_empty(), "no plain copy survives");
+        assert_eq!(
+            merged.snapshot.sealed[&id(100)],
+            made_private.sealed[&id(100)]
+        );
+        assert!(merged.conflicts.iter().any(|c| c.what == What::MadePrivate));
+    }
+
+    #[test]
+    fn a_deleted_private_bucket_stays_deleted() {
+        let base = privately(&home(vec![]), 0);
+        let mut deleted = Snapshot::default();
+        deleted.tombstones.buckets.insert(id(100), at(5));
+        let merged = merge(&base, &base.clone(), &deleted);
+        assert!(merged.snapshot.sealed.is_empty());
     }
 }

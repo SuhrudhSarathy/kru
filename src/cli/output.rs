@@ -76,7 +76,11 @@ pub fn print_buckets(store: &Store) {
         let open = bucket.open_count();
         table.add_row(vec![
             Cell::new(if is_active { "*" } else { "" }).fg(theme::ACTIVE.into()),
-            Cell::new(&bucket.name),
+            Cell::new(if store.is_private(bucket.header.id) {
+                format!("{} (private)", bucket.name)
+            } else {
+                bucket.name.clone()
+            }),
             Cell::new(open),
             Cell::new(bucket.len() - open),
         ]);

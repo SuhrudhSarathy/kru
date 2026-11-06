@@ -10,6 +10,16 @@ impl App {
         match action {
             Action::Quit => self.should_quit = true,
             Action::Sync => self.sync_requested = true,
+            Action::Unlock if self.store.locked_count() == 0 => {
+                self.error("No locked private buckets")
+            }
+            Action::Unlock => self.prompt(Prompt::Unlock, String::new()),
+            Action::Lock => {
+                self.expanded = None;
+                self.store.lock_all()?;
+                self.clamp_selection();
+                self.commit("Locked private buckets".to_string())?;
+            }
             Action::Back => match self.expanded {
                 Some(_) => self.expanded = None,
                 None => self.should_quit = true,
@@ -47,6 +57,8 @@ impl App {
             Action::Input(_)
             | Action::Newline
             | Action::Backspace
+            | Action::Move(_)
+            | Action::Delete(_)
             | Action::Submit
             | Action::Cancel
             | Action::Left

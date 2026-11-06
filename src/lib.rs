@@ -1,5 +1,6 @@
 pub mod bucket;
 pub mod config;
+pub mod privacy;
 pub mod store;
 pub mod sync;
 pub mod task;

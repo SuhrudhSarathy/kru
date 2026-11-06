@@ -30,7 +30,7 @@ fn key_hints(app: &App) -> &'static str {
     match (&app.mode, app.focus) {
         (Mode::Input { .. }, _) => "enter save · esc cancel",
         (Mode::Edit(editor), _) if editor.typing.is_some() => {
-            "enter keep · alt+enter new line · esc undo typing"
+            "enter keep · alt+enter or ctrl+j new line · arrows move · esc undo typing"
         }
         (Mode::Edit(_), _) => {
             "j/k field · h/l or space change option · enter type text · esc finish"
@@ -41,7 +41,7 @@ fn key_hints(app: &App) -> &'static str {
             task_keys!()
         ),
         (Mode::Normal, Focus::Buckets) => {
-            "j/k move · a add · e rename · r remove · u use · tab next pane · S sync · q quit"
+            "j/k move · a add · e rename · r remove · u use · P/L unlock/lock · tab next pane · S sync · q quit"
         }
         (Mode::Normal, Focus::Tasks) => concat!(
             "j/k move · x expand · a add · space done · ",

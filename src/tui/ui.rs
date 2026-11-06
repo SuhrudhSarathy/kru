@@ -4,7 +4,7 @@
 //! - `footer`: message and key hints
 //! - `expanded`: the blown-up view of one task, and editing it
 //! - `dialog`: text prompts and confirmations
-//! - `style`, `wrap`: shared helpers
+//! - `style`: shared helpers
 
 mod buckets;
 mod dialog;
@@ -12,7 +12,6 @@ mod expanded;
 mod footer;
 mod style;
 mod tasks;
-mod wrap;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout};

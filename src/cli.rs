@@ -7,6 +7,7 @@ pub mod config;
 mod fields;
 mod json;
 mod output;
+pub mod password;
 pub mod sync;
 mod task;
 
@@ -24,6 +25,10 @@ pub struct Cli {
     /// Print JSON instead of text (for scripts)
     #[arg(long, global = true)]
     pub json: bool,
+
+    /// Ask for the password of private buckets and show them for this command
+    #[arg(long, global = true)]
+    pub unlock: bool,
 
     #[command(subcommand)]
     pub command: Option<Command>,

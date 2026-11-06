@@ -283,3 +283,40 @@ fn status_reports_what_is_pending() {
     });
     assert!(status(&d.a).unwrap().local_changes);
 }
+
+#[test]
+fn private_buckets_sync_encrypted_and_open_on_the_other_device() {
+    let d = devices();
+    change(&d.a, |s| {
+        s.add_bucket("home").unwrap();
+        s.add_bucket("diary").unwrap();
+        s.add_task(Some("diary"), Task::new("a secret")).unwrap();
+        s.make_private_with("diary", "pw", crate::privacy::tests::cheap_kdf())
+            .unwrap();
+    });
+    init(&d.a, &d.remote, false).unwrap();
+    init(&d.b, &d.remote, false).unwrap();
+
+    // B gets it locked, and opens it with the same password.
+    let mut b = Store::open(&d.b).unwrap();
+    assert_eq!((b.locked_count(), b.buckets().count()), (1, 1));
+    b.unlock("pw").unwrap();
+    b.add_task(Some("diary"), Task::new("another secret"))
+        .unwrap();
+    b.save().unwrap();
+    sync(&d.b);
+    sync(&d.a);
+
+    let mut a = Store::open(&d.a).unwrap();
+    a.unlock("pw").unwrap();
+    assert_eq!(a.bucket("diary").unwrap().len(), 2);
+
+    // Nothing readable reached the remote.
+    let history = Command::new("git")
+        .args(["log", "-p", "--all"])
+        .current_dir(&d.remote)
+        .output()
+        .unwrap();
+    let history = String::from_utf8_lossy(&history.stdout);
+    assert!(!history.contains("secret") && !history.contains("diary"));
+}

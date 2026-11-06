@@ -13,8 +13,8 @@ use ratatui::widgets::{Block, Borders, Clear, Padding, Paragraph};
 
 use super::dialog::popup_area;
 use super::style;
-use super::wrap::{wrap, wrap_display};
 use crate::tui::app::{App, Editor, Mode};
+use crate::tui::wrap::{wrap, wrap_display};
 
 /// The expanded task: read-only, or in edit mode while editing.
 pub(super) fn render(frame: &mut Frame, app: &App, entry: &Entry) {
@@ -142,7 +142,11 @@ fn render_editor(frame: &mut Frame, app: &App, entry: &Entry, editor: &Editor) {
         let is_changed = changed.contains(&field.label);
 
         let values = match typing {
-            Some(text) => wrap(text, value_width),
+            Some(input) => {
+                let (row, column) = input.place(value_width);
+                cursor = Some((lines.len() + row, MARKER.len() + label_width + column));
+                wrap(input.text(), value_width)
+            }
             None => wrap_display(&editor_value(field, selected, now), value_width),
         };
         let value_style = match () {
@@ -164,12 +168,6 @@ fn render_editor(frame: &mut Frame, app: &App, entry: &Entry, editor: &Editor) {
                 0 => (MARKER, field.label),
                 _ => (MARKER, ""),
             };
-            if typing.is_some() && i == last {
-                cursor = Some((
-                    lines.len(),
-                    MARKER.len() + label_width + value.chars().count(),
-                ));
-            }
             let mut spans = vec![
                 Span::styled(marker, Style::new().cyan()),
                 Span::styled(format!("{label:<label_width$}"), label_style),
@@ -198,9 +196,11 @@ fn render_editor(frame: &mut Frame, app: &App, entry: &Entry, editor: &Editor) {
         .border_style(Style::new().yellow())
         .padding(Padding::horizontal(1));
     let inner = block.inner(area);
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    // Scroll if the rows don't fit, so the cursor stays in view.
+    let scroll = cursor.map_or(0, |(row, _)| (row as u16 + 1).saturating_sub(inner.height));
+    frame.render_widget(Paragraph::new(lines).block(block).scroll((scroll, 0)), area);
     if let Some((row, column)) = cursor {
-        frame.set_cursor_position((inner.x + column as u16, inner.y + row as u16));
+        frame.set_cursor_position((inner.x + column as u16, inner.y + row as u16 - scroll));
     }
 }
 

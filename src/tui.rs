@@ -9,9 +9,9 @@ mod ui;
 mod wrap;
 
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use kru::Store;
@@ -28,34 +28,91 @@ const AUTOSYNC_EVERY: Duration = Duration::from_secs(5 * 60);
 /// How long to wait for a key before checking on background work.
 const TICK: Duration = Duration::from_millis(250);
 
+/// Runs syncs on background threads so the UI never waits for the network.
+/// At most one sync runs at a time; its result arrives on `results`.
+struct Syncer {
+    dir: PathBuf,
+    results: Receiver<kru::Result<Report>>,
+    sender: Sender<kru::Result<Report>>,
+    running: bool,
+    /// When the next periodic sync is due; `None` without `autosync`.
+    next_auto: Option<Instant>,
+}
+
+impl Syncer {
+    fn new(dir: PathBuf, autosync: bool) -> Self {
+        let (sender, results) = mpsc::channel();
+        Self {
+            dir,
+            results,
+            sender,
+            running: false,
+            next_auto: autosync.then(|| Instant::now() + AUTOSYNC_EVERY),
+        }
+    }
+
+    /// Starts a sync in the background. Returns false if one is already
+    /// running.
+    fn start(&mut self) -> bool {
+        if self.running {
+            return false;
+        }
+        self.running = true;
+        let (dir, sender) = (self.dir.clone(), self.sender.clone());
+        thread::spawn(move || {
+            let _ = sender.send(sync::run(&dir, false));
+        });
+        true
+    }
+
+    /// The result of a finished sync, if any. Also starts the periodic sync
+    /// when it is due.
+    fn poll(&mut self) -> Option<kru::Result<Report>> {
+        if let Ok(result) = self.results.try_recv() {
+            self.running = false;
+            return Some(result);
+        }
+        if self.next_auto.is_some_and(|at| Instant::now() >= at) {
+            self.next_auto = Some(Instant::now() + AUTOSYNC_EVERY);
+            self.start();
+        }
+        None
+    }
+
+    /// Waits for a running sync to finish.
+    fn finish(&mut self) {
+        if self.running {
+            let _ = self.results.recv();
+            self.running = false;
+        }
+    }
+}
+
 /// Opens the TUI and blocks until the user quits.
 /// The terminal is restored even if the loop returns an error.
 ///
-/// If the store syncs with other devices, it syncs when the TUI opens and
-/// when it closes, on `S`, and every few minutes with `autosync` on.
+/// If the store syncs with other devices, a sync starts in the background
+/// when the TUI opens (the UI doesn't wait for it), and runs again on `S` and
+/// every few minutes with `autosync` on. One last sync runs when it closes.
 pub fn run(store: Store) -> Result<()> {
     let config = Config::load()?;
     let editor = config.editor();
     let dir = store.dir().to_path_buf();
     let syncs = sync::is_set_up(&dir);
 
-    let mut app = if syncs {
-        eprint!("Syncing… ");
-        let (message, failed) = describe(sync::run(&dir, false));
-        eprintln!("{message}");
-        let mut app = App::new(Store::open(&dir)?);
-        app.notify(message, failed);
-        app
-    } else {
-        App::new(store)
-    };
-    let background = (syncs && config.autosync()).then(|| autosync(dir.clone()));
+    let mut app = App::new(store);
+    let mut syncer = Syncer::new(dir.clone(), syncs && config.autosync());
+    if syncs {
+        syncer.start();
+        app.notify("Syncing…", false);
+    }
 
     let mut terminal = terminal::enter();
-    let result = event_loop(&mut terminal, &mut app, &editor, &dir, background.as_ref());
+    let result = event_loop(&mut terminal, &mut app, &editor, &dir, &mut syncer);
     terminal::leave();
 
     if syncs {
+        syncer.finish();
         eprint!("Syncing… ");
         eprintln!("{}", describe(sync::run(&dir, false)).0);
     }
@@ -64,13 +121,13 @@ pub fn run(store: Store) -> Result<()> {
 
 /// Draws, waits briefly for a key, applies the matching action; repeats
 /// until quit. In between, it hands the terminal to the editor when a file
-/// should be opened, and syncs when asked or when a background sync is done.
+/// should be opened, and starts syncs or picks up their results.
 fn event_loop(
     terminal: &mut DefaultTerminal,
     app: &mut App,
     editor: &str,
     dir: &Path,
-    background: Option<&Receiver<kru::Result<Report>>>,
+    syncer: &mut Syncer,
 ) -> Result<()> {
     while !app.should_quit {
         terminal.draw(|frame| ui::render(frame, app))?;
@@ -90,36 +147,19 @@ fn event_loop(
         if std::mem::take(&mut app.sync_requested) {
             if !sync::is_set_up(dir) {
                 app.notify("Sync isn't set up: run `kru sync init <remote-url>`", true);
-                continue;
+            } else if syncer.start() {
+                app.notify("Syncing…", false);
+            } else {
+                app.notify("Already syncing…", false);
             }
-            app.notify("Syncing…", false);
-            terminal.draw(|frame| ui::render(frame, app))?;
-            let (message, failed) = describe(sync::run(dir, false));
-            app.reload();
-            app.notify(message, failed);
         }
-        if let Some(result) = background.and_then(|rx| rx.try_recv().ok()) {
+        if let Some(result) = syncer.poll() {
             let (message, failed) = describe(result);
             app.reload();
             app.notify(message, failed);
         }
     }
     Ok(())
-}
-
-/// Syncs every [`AUTOSYNC_EVERY`] on a background thread; results arrive on
-/// the returned channel. The thread stops when the channel is dropped.
-fn autosync(dir: PathBuf) -> Receiver<kru::Result<Report>> {
-    let (results, receiver) = mpsc::channel();
-    thread::spawn(move || {
-        loop {
-            thread::sleep(AUTOSYNC_EVERY);
-            if results.send(sync::run(&dir, false)).is_err() {
-                break;
-            }
-        }
-    });
-    receiver
 }
 
 /// A one-line summary of a sync for the footer, and whether it failed.
